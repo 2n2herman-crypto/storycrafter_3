@@ -88,6 +88,7 @@ export const DEFAULT_ASSET_PATHS = [
   'scene_beat_outline.md',
   'foreshadowing.md',
   'subplots.md',
+  'user_requirements.md',
   '_check_report.md',
   'draft_history.md',
 ]

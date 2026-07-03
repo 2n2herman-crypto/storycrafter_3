@@ -19,7 +19,8 @@
 你会收到：
 
 1. `<worldbuilding>` 标签包裹的已有设定（**空标签 = 新建模式，有内容 = 修改模式**）
-2. `<user_revision_instruction>` 标签包裹的用户需求指令
+2. `<user_requirements>` 标签包裹的用户需求文档（世界观的预期方向、核心设定要求）
+3. `<user_revision_instruction>` 标签包裹的用户需求指令
 
 ---
 

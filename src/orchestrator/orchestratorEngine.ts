@@ -21,6 +21,12 @@ const MAX_RETRIES = 3
 const MAX_TOOLS_PER_ROUND = 5
 const CONTEXT_LIMIT_CHARS = 22_000 // deepseek-v4-flash 32K 的 ~70%
 
+/** 创作工具 ID 列表（用于后处理判断是否需要更新需求状态） */
+const CREATIVE_TOOL_IDS = [
+  'worldbuilding', 'characters', 'act_map', 'sequence_list',
+  'scene_beats', 'foreshadowing_tracker', 'subplot_manager',
+]
+
 
 // ===== Prompt 加载 =====
 
@@ -268,6 +274,23 @@ export class OrchestratorEngine {
               ? `已完成 ${state.toolsCalled.length} 个工具调用`
               : '处理完成',
           })
+
+          // 后处理：如果有创作工具被执行，自动更新 user_requirements.md 的状态标记
+          if (state.toolsCalled.some(id => CREATIVE_TOOL_IDS.includes(id))) {
+            const reqTool = getTool('user_requirements_analyzer')
+            if (reqTool) {
+              const successTools = state.toolResults
+                .filter(r => r.success && r.writes && r.writes.length > 0)
+                .map(r => r.writes!.join(', '))
+                .filter(Boolean)
+
+              if (successTools.length > 0) {
+                const statusInstruction = `根据本轮执行结果更新 user_requirements.md 的状态标记。已成功写入：${successTools.join('；')}。请将其中已实现的需求标记为 ✅，仍未实现的需求保持 ⬜。仅更新状态标记，不修改需求内容。`
+                await this.executeTool(reqTool, statusInstruction)
+              }
+            }
+          }
+
           return {
             success: true,
             results: state.toolResults,
@@ -401,6 +424,23 @@ export class OrchestratorEngine {
     this.emit('engine_complete', {
       message: auditMsg,
     })
+
+    // 后处理：如果有创作工具被执行，自动更新 user_requirements.md 的状态标记
+    if (state.toolsCalled.some(id => CREATIVE_TOOL_IDS.includes(id))) {
+      const reqTool = getTool('user_requirements_analyzer')
+      if (reqTool) {
+        const successTools = state.toolResults
+          .filter(r => r.success && r.writes && r.writes.length > 0)
+          .map(r => r.writes!.join(', '))
+          .filter(Boolean)
+
+        if (successTools.length > 0) {
+          const statusInstruction = `根据本轮执行结果更新 user_requirements.md 的状态标记。已成功写入：${successTools.join('；')}。请将其中已实现的需求标记为 ✅，仍未实现的需求保持 ⬜。仅更新状态标记，不修改需求内容。`
+          await this.executeTool(reqTool, statusInstruction)
+        }
+      }
+    }
+
     return {
       success: true,
       results: state.toolResults,

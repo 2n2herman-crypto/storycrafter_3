@@ -19,6 +19,7 @@
 - `scene_beat_outline.md` — 场景节拍
 - `foreshadowing.md` — 伏笔规划
 - `subplots.md` — 支线
+- `user_requirements.md` — 用户需求
 - `_check_report.md` — 审查报告
 - `draft_history.md` — 修改记录
 

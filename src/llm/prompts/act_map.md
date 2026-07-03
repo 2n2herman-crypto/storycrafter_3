@@ -14,6 +14,7 @@
 
 - `<worldbuilding>`：世界观设定或环境描述
 - `<characters>`：角色设定
+- `<user_requirements>`：用户需求文档（剧情方向、风格基调要求）
 - `<act_map>`：已有幕结构（如有）
 
 ### 模式判断

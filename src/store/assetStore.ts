@@ -29,6 +29,7 @@ const FILE_LABELS: Record<string, string> = {
   'scene_beat_outline.md': '场景节拍大纲',
   'foreshadowing.md': '伏笔与信息披露',
   'subplots.md': '支线管理',
+  'user_requirements.md': '用户需求',
 }
 
 // ===== 内部状态 =====

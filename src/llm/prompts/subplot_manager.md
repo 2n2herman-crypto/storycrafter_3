@@ -17,6 +17,7 @@
 - `<act_map>`：幕结构
 - `<sequence_list>`：序列清单（已有序列定位）
 - `<scene_beat_outline>`：场景节拍（已有场景列表）
+- `<user_requirements>`：用户需求文档（支线相关的用户预期）
 - `<subplots>`：已有支线记录（如有）
 
 ### 模式判断

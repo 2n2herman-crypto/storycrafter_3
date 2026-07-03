@@ -15,6 +15,7 @@
 - `<worldbuilding>`：世界观设定或环境描述
 - `<characters>`：角色设定
 - `<act_map>`：幕结构
+- `<user_requirements>`：用户需求文档
 - `<sequence_list>`：已有序列清单（如有）
 
 ### 模式判断
