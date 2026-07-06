@@ -6,20 +6,23 @@
 
 .input {
   flex: 1;
-  height: 34px;
-  padding: 0 12px;
-  border: 1px solid var(--color-bg-tertiary);
-  border-radius: 6px;
-  background: var(--color-bg-primary);
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid #d8d2bf;
+  border-radius: var(--radius-control);
+  background: var(--color-bg-tertiary);
   color: var(--color-text-primary);
   font-size: 13px;
   font-family: var(--font-sans);
   outline: none;
-  transition: border-color 0.15s ease;
+  transition:
+    border-color 160ms ease-out,
+    box-shadow 160ms ease-out;
 }
 
 .input:focus {
   border-color: var(--color-accent);
+  box-shadow: 0 0 0 3px rgba(74, 90, 168, 0.18);
 }
 
 .input:disabled {
@@ -32,21 +35,24 @@
 }
 
 .sendBtn {
-  height: 34px;
-  padding: 0 16px;
-  border: none;
-  border-radius: 6px;
+  height: 36px;
+  padding: 0 20px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-control);
   background: var(--color-accent);
   color: #fff;
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition:
+    background-color 160ms ease-out,
+    transform 160ms ease-out;
   flex-shrink: 0;
 }
 
 .sendBtn:hover:not(:disabled) {
   background: var(--color-accent-hover);
+  transform: translateY(-1px);
 }
 
 .sendBtn:disabled {

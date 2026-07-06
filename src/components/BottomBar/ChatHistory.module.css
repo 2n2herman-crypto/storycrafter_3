@@ -33,7 +33,7 @@
 
 .tagUser {
   color: var(--color-accent);
-  background: rgba(76, 110, 245, 0.1);
+  background: rgba(74, 90, 168, 0.12);
 }
 
 .tagSystem {
@@ -42,8 +42,8 @@
 }
 
 .tagAgent {
-  color: var(--color-warning);
-  background: rgba(250, 176, 5, 0.1);
+  color: var(--color-brown);
+  background: rgba(165, 73, 60, 0.1);
 }
 
 .content {

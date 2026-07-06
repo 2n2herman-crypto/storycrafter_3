@@ -59,18 +59,6 @@ export class LLMClient {
   }
 
   /**
-   * Subagent 调用（带上下文组装）
-   */
-  async callAgent(
-    systemPrompt: string,
-    context: string,
-    instruction: string,
-  ): Promise<string> {
-    const userContent = `${context}\n\n<user_revision_instruction>\n${instruction}\n</user_revision_instruction>`
-    return this.sendMessage(systemPrompt, userContent)
-  }
-
-  /**
    * Function Calling 消息发送（Orchestrator 使用）
    *
    * 支持 tool_choice='auto'，返回包含 tool_calls 的完整响应。

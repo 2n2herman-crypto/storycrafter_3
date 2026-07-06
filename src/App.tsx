@@ -3,7 +3,7 @@ import './styles/layout.css'
 import './styles/diff.css'
 
 import { HeaderBar } from './components/Layout/HeaderBar'
-import { DiffLayout } from './components/Layout/DiffLayout'
+import { MultiColumnLayout } from './components/Layout/MultiColumnLayout'
 import { BaselinePanel } from './components/Layout/BaselinePanel'
 import { CurrentPanel } from './components/Layout/CurrentPanel'
 import { AssetCardPanel } from './components/Layout/AssetCardPanel'
@@ -41,35 +41,35 @@ function App() {
   // 获取当前选中卡片的内容
   const selectedCardData = selectedCard ? assets[selectedCard] : null
   const cardList = useAssetStore((s) => s.getAssetList())
+  // 选中卡片的中文展示名（从卡片列表取，回退到路径）
+  const selectedLabel =
+    cardList.find((c) => c.path === selectedCard)?.filename ?? selectedCard ?? undefined
 
   return (
     <div className="app-container">
       <HeaderBar />
-      <DiffLayout
-        left={
-          <BaselinePanel
-            filename={selectedCard ?? undefined}
-            content={selectedCardData?.previousContent ?? undefined}
-            isLoading={!isReady}
-          />
-        }
-        center={
-          <CurrentPanel
-            filename={selectedCard ?? undefined}
-            content={selectedCardData?.content ?? undefined}
-            baselineContent={selectedCardData?.previousContent ?? undefined}
-            isLoading={!isReady}
-          />
-        }
-        right={
+      <MultiColumnLayout
+        defaultRatios={[27, 20, 26.5, 26.5]}
+        fixedBoundaries={[0]}
+        columns={[
+          <BottomPanel />,
           <AssetCardPanel
             cards={cardList}
             selectedPath={selectedCard}
             onSelect={setSelectedCard}
-          />
-        }
+          />,
+          <CurrentPanel
+            filename={selectedLabel}
+            content={selectedCardData?.content ?? undefined}
+            isLoading={!isReady}
+          />,
+          <BaselinePanel
+            filename={selectedLabel}
+            content={selectedCardData?.previousContent ?? undefined}
+            isLoading={!isReady}
+          />,
+        ]}
       />
-      <BottomPanel />
     </div>
   )
 }

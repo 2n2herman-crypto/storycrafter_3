@@ -1,18 +1,14 @@
 import type OpenAI from 'openai'
-import type { ToolSpec, ToolResult, DispatchResult, SchedulerState, ExecutionEvent, ExecutionEventCallback } from '../types'
-import { getTool, getAvailableTools, buildFunctionSpec } from './toolRegistry'
+import type { SubagentSpec, SkillSpec, ToolResult, DispatchResult, SchedulerState, ExecutionEvent, ExecutionEventCallback, ConversationTurn } from '../types'
+import { getSubagent, getAvailableSubagents, buildFunctionSpec } from '../skills/skillLoader'
+import { selectSkill } from './skillRouter'
 import { assembleContext, buildAgentPrompt } from './contextAssembler'
 import { validateOutput } from './outputValidator'
 import type { LLMClient } from '../llm/client'
 import type { FileManager } from './fileManager'
+import orchestratorPromptRaw from '../llm/prompts/orchestrator_v5.md?raw'
 
 type ChatCompletionMessageParam = OpenAI.Chat.Completions.ChatCompletionMessageParam
-
-// Vite glob import: 加载所有 prompt 文件
-const promptModules = import.meta.glob<{ default: string }>(
-  '../llm/prompts/*.md',
-  { query: '?raw', eager: true },
-)
 
 // ===== 常量 =====
 
@@ -21,46 +17,45 @@ const MAX_RETRIES = 3
 const MAX_TOOLS_PER_ROUND = 5
 const CONTEXT_LIMIT_CHARS = 22_000 // deepseek-v4-flash 32K 的 ~70%
 
-/** 创作工具 ID 列表（用于后处理判断是否需要更新需求状态） */
+/** 创作 Subagent ID 列表（用于后处理判断是否需要更新需求状态） */
 const CREATIVE_TOOL_IDS = [
   'worldbuilding', 'characters', 'act_map', 'sequence_list',
   'scene_beats', 'foreshadowing_tracker', 'subplot_manager',
 ]
 
+/**
+ * 前置需求合并指令（v5.5 机制 A）
+ *
+ * 每轮 FC 循环前调用 user_requirements_analyzer，把用户本轮明确表达的新需求
+ * 结合对话上下文合并进 user_requirements.md。区别于后处理的"状态标记模式"。
+ */
+const MERGE_INSTRUCTION =
+  '结合最近的对话上下文（<conversation_history>），将用户本轮明确表达的新需求合并进 user_requirements.md。' +
+  '遵循高精度低召回：只记录用户明说的需求；解析"那个""上面说的"等指代时，以对话上文为准锚定其所指，' +
+  '无法明确锚定的指代不要臆测。保留所有已有的状态标记（✅/⬜/❌）不变。' +
+  '如果用户本轮没有提出任何新需求，原样返回已有的需求文档，不要新增或改写条目。'
+
 
 // ===== Prompt 加载 =====
 
 /**
- * 加载 System Prompt 文件内容
- */
-function loadSystemPrompt(filePath: string): string {
-  const modulePath = `../llm/prompts/${filePath.replace('prompts/', '')}`
-  const mod = promptModules[modulePath]
-  if (!mod) {
-    throw new Error(`System Prompt 文件未找到: ${filePath} (module path: ${modulePath})`)
-  }
-  return mod.default
-}
-
-/**
- * 加载并组装 Orchestrator System Prompt（注入可用工具列表）
+ * 加载并组装 Orchestrator System Prompt（注入可用 Subagent 列表）
  */
 function loadOrchestratorPrompt(tools: object[]): string {
-  const raw = loadSystemPrompt('prompts/orchestrator_v5.md')
-  return raw.replace(
+  return orchestratorPromptRaw.replace(
     '{available_tools_json}',
     JSON.stringify(tools, null, 2),
   )
 }
 
-// ===== Tool 执行 =====
+// ===== Skill 执行 =====
 
 /**
- * 判断是否为"清空操作"工具（如 reset_all）
- * 协议：writes:[] + outputTags:[] = 清空操作
+ * 判断是否为"清空操作"Skill（如 reset_all）
+ * 协议：writes:[] + outputTags:[] = 清空操作，不调 LLM
  */
-function isResetTool(tool: ToolSpec): boolean {
-  return tool.writes.length === 0 && tool.outputTags.length === 0
+function isResetSkill(skill: SkillSpec): boolean {
+  return skill.writes.length === 0 && skill.outputTags.length === 0
 }
 
 // ===== 上下文管理 =====
@@ -129,21 +124,34 @@ export class OrchestratorEngine {
   }
 
   /**
-   * 执行单个 Tool（含重试逻辑）
+   * 执行单个 Subagent（四层框架：Subagent → Skill Router → Skill，含重试逻辑）
+   *
+   * @param history - 可选：最近若干轮对话（v5.5，供需求整理者解析指代）
    */
   private async executeTool(
-    tool: ToolSpec,
+    subagent: SubagentSpec,
     instruction: string,
+    history?: ConversationTurn[],
   ): Promise<ToolResult> {
-    // reset_all 特殊处理：不调 LLM，直接清空
-    if (isResetTool(tool)) {
+    // ① Skill Router：在该 Subagent 名下选出最合适的 Skill
+    //    单 Skill 时零成本直选、不调 LLM（本轮所有 Subagent 都是单 Skill）
+    const skill = selectSkill(subagent.id, instruction)
+
+    // reset_all 特殊处理：空 writes + 空 outputTags = 不调 LLM，直接清空
+    if (isResetSkill(skill)) {
       await this.fileManager.clearAll()
-      return { success: true, writes: [], output: '已清空所有故事内容' }
+      return {
+        success: true,
+        writes: [],
+        output: '已清空所有故事内容',
+        skillId: skill.skillId,
+        skillName: skill.name,
+      }
     }
 
-    // ① 读取上下文
+    // ② 读取上下文（按 Skill.reads）
     const files: Record<string, string> = {}
-    for (const path of tool.reads) {
+    for (const path of skill.reads) {
       try {
         files[path] = await this.fileManager.readFile(path)
       } catch {
@@ -151,25 +159,22 @@ export class OrchestratorEngine {
       }
     }
 
-    // ② 组装上下文
-    const context = assembleContext(tool, files)
+    // ③ 组装上下文
+    const context = assembleContext(skill.reads, files)
 
-    // ③ 加载 System Prompt
-    let systemPrompt: string
-    try {
-      systemPrompt = loadSystemPrompt(tool.systemPromptFile)
-    } catch (e) {
-      return { success: false, error: `加载 System Prompt 失败: ${(e as Error).message}` }
-    }
+    // ④ 组装 System Prompt：Subagent 角色前缀 + Skill 正文
+    const systemPrompt = skill.preamble
+      ? `${skill.preamble}\n\n${skill.body}`
+      : skill.body
 
-    // ④ 组装完整 Prompt
-    let userContent = buildAgentPrompt(context, instruction)
+    // ⑤ 组装完整 Prompt（v5.5：注入对话历史，供解析指代）
+    let userContent = buildAgentPrompt(context, instruction, history)
 
-    // ⑤ 调用 LLM + 校验（最多 3 次重试）
+    // ⑥ 调用 LLM + 校验（最多 3 次重试）
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         const output = await this.llm.sendMessage(systemPrompt, userContent)
-        const validation = validateOutput(output, tool)
+        const validation = validateOutput(output, skill)
 
         if (validation.valid) {
           for (const [file, content] of Object.entries(validation.extracted)) {
@@ -179,19 +184,23 @@ export class OrchestratorEngine {
             success: true,
             writes: Object.keys(validation.extracted),
             output: output,
+            skillId: skill.skillId,
+            skillName: skill.name,
           }
         }
 
         // 校验失败：追加格式提示后重试
         if (attempt < MAX_RETRIES - 1) {
           this.emit('tool_retry', {
-            toolId: tool.id,
-            toolName: tool.name,
+            toolId: subagent.id,
+            toolName: subagent.name,
+            skillId: skill.skillId,
+            skillName: skill.name,
             attempt: attempt + 1,
             maxAttempts: MAX_RETRIES,
-            message: `${tool.name} 格式错误，重试 ${attempt + 1}/${MAX_RETRIES}`,
+            message: `${subagent.name} 格式错误，重试 ${attempt + 1}/${MAX_RETRIES}`,
           })
-          userContent = `${userContent}\n\n---\n⚠️ 格式错误：输出必须包含正确的 ${tool.outputTags[0]} 和 ${tool.outputTags[1]} 包裹。请严格遵循模板格式重新输出完整内容。`
+          userContent = `${userContent}\n\n---\n⚠️ 格式错误：输出必须包含正确的 ${skill.outputTags[0]} 和 ${skill.outputTags[1]} 包裹。请严格遵循模板格式重新输出完整内容。`
         }
       } catch (e) {
         if (attempt === MAX_RETRIES - 1) {
@@ -207,19 +216,57 @@ export class OrchestratorEngine {
    * 处理用户输入
    *
    * @param userInput - 用户原始输入
+   * @param history - 最近若干轮对话（v5.5，用于跨轮需求记忆）
+   * @param onEvent - 执行事件回调
    * @returns DispatchResult
    */
-  async processUserInput(userInput: string, onEvent?: ExecutionEventCallback): Promise<DispatchResult> {
-    // ① 计算可用工具（v5：全部工具始终可见）
+  async processUserInput(
+    userInput: string,
+    history: ConversationTurn[] = [],
+    onEvent?: ExecutionEventCallback,
+  ): Promise<DispatchResult> {
+    // ① 计算可用 Subagent（v5：全部始终可见）
     this.onEvent = onEvent
-    const availableTools = getAvailableTools()
-    const toolSpecs = availableTools.map(buildFunctionSpec)
+    const availableSubagents = getAvailableSubagents()
+    const toolSpecs = availableSubagents.map(buildFunctionSpec)
 
     // ② 加载 System Prompt（注入工具列表）
     let systemPrompt = loadOrchestratorPrompt(toolSpecs)
 
-    // ③ 初始化消息列表
+    // ②.5 前置需求合并（v5.5 机制 A）：每轮确定性地把新需求结合对话上下文
+    //      合并进 user_requirements.md，不依赖 Orchestrator 是否主动选择需求整理者。
+    const analyzer = getSubagent('user_requirements_analyzer')
+    if (analyzer) {
+      this.emit('tool_start', {
+        toolId: analyzer.id,
+        toolName: analyzer.name,
+        message: `整理需求：${analyzer.name}`,
+      })
+      const mergeResult = await this.executeTool(analyzer, MERGE_INSTRUCTION, history)
+      if (mergeResult.success) {
+        this.emit('tool_complete', {
+          toolId: analyzer.id,
+          toolName: analyzer.name,
+          skillId: mergeResult.skillId,
+          skillName: mergeResult.skillName,
+          writes: mergeResult.writes,
+          message: `${analyzer.name} 完成`,
+        })
+      } else {
+        this.emit('tool_error', {
+          toolId: analyzer.id,
+          toolName: analyzer.name,
+          message: `${analyzer.name} 失败`,
+        })
+      }
+    }
+
+    // ③ 初始化消息列表（v5.5 机制 B：前置最近若干轮对话历史，供 Orchestrator 理解指代）
     const messages: ChatCompletionMessageParam[] = [
+      ...history.map(
+        (turn) =>
+          ({ role: turn.role, content: turn.content }) as ChatCompletionMessageParam,
+      ),
       { role: 'user', content: userInput },
     ]
 
@@ -275,9 +322,9 @@ export class OrchestratorEngine {
               : '处理完成',
           })
 
-          // 后处理：如果有创作工具被执行，自动更新 user_requirements.md 的状态标记
+          // 后处理：如果有创作 Subagent 被执行，自动更新 user_requirements.md 的状态标记
           if (state.toolsCalled.some(id => CREATIVE_TOOL_IDS.includes(id))) {
-            const reqTool = getTool('user_requirements_analyzer')
+            const reqTool = getSubagent('user_requirements_analyzer')
             if (reqTool) {
               const successTools = state.toolResults
                 .filter(r => r.success && r.writes && r.writes.length > 0)
@@ -315,13 +362,13 @@ export class OrchestratorEngine {
             tool_calls: toolCalls,
           } as ChatCompletionMessageParam)
 
-          // 串行执行每个 Tool
+          // 串行执行每个 Subagent
           for (const toolCall of callsToProcess) {
             const toolId = toolCall.function.name
-            const toolSpec = getTool(toolId)
+            const subagentSpec = getSubagent(toolId)
 
-            if (!toolSpec) {
-              // 未知工具 → 返回错误
+            if (!subagentSpec) {
+              // 未知 Subagent → 返回错误
               messages.push({
                 role: 'tool',
                 tool_call_id: toolCall.id,
@@ -339,36 +386,41 @@ export class OrchestratorEngine {
               instruction = toolCall.function.arguments || ''
             }
 
-            // 执行 Tool
+            // 执行 Subagent
             this.emit('tool_start', {
-              toolId: toolSpec.id,
-              toolName: toolSpec.name,
+              toolId: subagentSpec.id,
+              toolName: subagentSpec.name,
               round: state.currentRound + 1,
               maxRounds: state.maxRounds,
-              message: `调用：${toolSpec.name}`,
+              message: `调用：${subagentSpec.name}`,
             })
 
-            const result = await this.executeTool(toolSpec, instruction)
+            const result = await this.executeTool(subagentSpec, instruction)
             state.toolResults.push(result)
-            state.toolsCalled.push(toolSpec.id)
+            state.toolsCalled.push(subagentSpec.id)
 
             if (result.success) {
               this.emit('tool_complete', {
-                toolId: toolSpec.id,
-                toolName: toolSpec.name,
-                message: `${toolSpec.name} 完成`,
+                toolId: subagentSpec.id,
+                toolName: subagentSpec.name,
+                skillId: result.skillId,
+                skillName: result.skillName,
+                writes: result.writes,
+                message: `${subagentSpec.name} 完成`,
               })
             } else {
               this.emit('tool_error', {
-                toolId: toolSpec.id,
-                toolName: toolSpec.name,
-                message: `${toolSpec.name} 失败`,
+                toolId: subagentSpec.id,
+                toolName: subagentSpec.name,
+                skillId: result.skillId,
+                skillName: result.skillName,
+                message: `${subagentSpec.name} 失败`,
               })
             }
 
             // 将 tool 结果加入消息历史
-            // story_checker 注入完整报告，其余工具返回简短消息
-            if (toolSpec.id === 'story_checker' && result.success) {
+            // story_checker 注入完整报告，其余 Subagent 返回简短消息
+            if (subagentSpec.id === 'story_checker' && result.success) {
               const report = await this.fileManager.readFile('_check_report.md')
               messages.push({
                 role: 'tool',
@@ -381,13 +433,13 @@ export class OrchestratorEngine {
                 role: 'tool',
                 tool_call_id: toolCall.id,
                 content: result.success
-                  ? `已成功执行 ${toolSpec.name}，输出已保存。`
-                  : `${toolSpec.name} 执行失败: ${result.error || '未知错误'}`,
+                  ? `已成功执行 ${subagentSpec.name}，输出已保存。`
+                  : `${subagentSpec.name} 执行失败: ${result.error || '未知错误'}`,
               } as ChatCompletionMessageParam)
             }
           }
 
-          // v5：不再重算可用工具（所有工具始终可见）
+          // v5：不再重算可用 Subagent（全部始终可见）
 
           state.currentRound++
           break
@@ -425,9 +477,9 @@ export class OrchestratorEngine {
       message: auditMsg,
     })
 
-    // 后处理：如果有创作工具被执行，自动更新 user_requirements.md 的状态标记
+    // 后处理：如果有创作 Subagent 被执行，自动更新 user_requirements.md 的状态标记
     if (state.toolsCalled.some(id => CREATIVE_TOOL_IDS.includes(id))) {
-      const reqTool = getTool('user_requirements_analyzer')
+      const reqTool = getSubagent('user_requirements_analyzer')
       if (reqTool) {
         const successTools = state.toolResults
           .filter(r => r.success && r.writes && r.writes.length > 0)

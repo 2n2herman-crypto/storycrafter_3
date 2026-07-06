@@ -1,3 +1,12 @@
+---
+name: 序列清单设计
+description: 设计或精炼序列清单，每个序列围绕一件事推进并回答其戏剧问题
+when: [序列, 序列清单, 戏剧问题, 语境]
+reads: ['user_requirements.md', 'worldbuilding.md', 'characters.md', 'act_map.md', 'sequence_list.md']
+writes: ['sequence_list.md']
+outputTags: ['<<<SEQUENCE_LIST_START>>>', '<<<SEQUENCE_LIST_END>>>']
+---
+
 # 序列清单设计
 
 ## 角色

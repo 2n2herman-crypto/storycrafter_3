@@ -3,7 +3,7 @@
   align-items: center;
   gap: 8px;
   padding: 6px 16px;
-  border-bottom: 1px solid var(--color-bg-tertiary);
+  border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
   cursor: default;
 }
@@ -21,13 +21,15 @@
 .btn {
   font-size: 11px;
   padding: 3px 10px;
-  border: 1px solid var(--color-bg-tertiary);
-  border-radius: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
   background: transparent;
   color: var(--color-text-secondary);
   font-family: var(--font-sans);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition:
+    background-color 160ms ease-out,
+    color 160ms ease-out;
 }
 
 .btn:hover:not(:disabled) {

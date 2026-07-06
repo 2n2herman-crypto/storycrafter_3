@@ -1,0 +1,25 @@
+.layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
+}
+
+/* 固定边界：纯留白，不渲染可见分隔线 */
+.fixedDivider {
+  width: 12px;
+  flex-shrink: 0;
+  background: transparent;
+}

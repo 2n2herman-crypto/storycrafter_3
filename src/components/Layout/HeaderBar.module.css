@@ -3,23 +3,43 @@
   align-items: center;
   justify-content: space-between;
   height: var(--header-height);
-  padding: 0 20px;
+  padding: 0 18px;
   background: var(--color-bg-secondary);
-  border-bottom: 1px solid var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-panel);
+  box-shadow: var(--shadow-panel);
   flex-shrink: 0;
   user-select: none;
 }
 
-.logo {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--color-text-primary);
-  letter-spacing: 0.5px;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
-.logoAccent {
-  color: var(--color-accent);
-  margin-right: 4px;
+/* 现代主义几何色块标识 */
+.mark {
+  display: grid;
+  grid-template-columns: 9px 9px;
+  grid-template-rows: 9px 9px;
+  gap: 2px;
+}
+
+.mark span {
+  border-radius: 2px;
+}
+
+.mark span:nth-child(1) { background: var(--color-accent); }
+.mark span:nth-child(2) { background: var(--color-brown); }
+.mark span:nth-child(3) { background: var(--color-warning); }
+.mark span:nth-child(4) { background: var(--color-success); }
+
+.logo {
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-text-primary);
+  letter-spacing: 0;
 }
 
 .version {
@@ -30,17 +50,21 @@
 }
 
 .settingsBtn {
-  background: none;
-  border: 1px solid var(--color-bg-tertiary);
+  background: var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
   color: var(--color-text-secondary);
-  padding: 4px 12px;
-  border-radius: 4px;
+  padding: 5px 14px;
+  border-radius: var(--radius-control);
   cursor: pointer;
   font-size: 13px;
-  transition: all 0.15s ease;
+  transition:
+    background-color 160ms ease-out,
+    border-color 160ms ease-out,
+    color 160ms ease-out;
 }
 
 .settingsBtn:hover {
   background: var(--color-bg-hover);
   color: var(--color-text-primary);
+  border-color: var(--color-border-strong);
 }

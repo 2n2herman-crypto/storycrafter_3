@@ -1,9 +1,13 @@
 import { create } from 'zustand'
-import type { ChatMessage, ExecutionEvent } from '../types'
+import type { ChatMessage, ExecutionEvent, ConversationTurn } from '../types'
 import type { OrchestratorEngine } from '../orchestrator/orchestratorEngine'
 import { useAssetStore } from './assetStore'
-import { getTool } from '../orchestrator/toolRegistry'
 import { classifyLLMError } from '../utils/llmError'
+
+// ===== 常量 =====
+
+/** 回传给引擎的对话窗口大小（最近 N 条消息，v5.5 跨轮需求记忆） */
+const HISTORY_WINDOW = 6
 
 // ===== Store 类型 =====
 
@@ -70,7 +74,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     // ① 防抖检查
     if (isProcessing || !_engine) return
 
-    // ② 添加用户消息，重置执行日志
+    // ② 采集对话窗口（推入本次 userMsg 之前，避免重复；system → assistant 映射）
+    const history: ConversationTurn[] = get()
+      .messages.slice(-HISTORY_WINDOW)
+      .map((m) => ({
+        role: m.role === 'system' ? 'assistant' : 'user',
+        content: m.content,
+      }))
+
+    // ③ 添加用户消息，重置执行日志
     const userMsg = createUserMessage(content)
     set((state) => ({
       messages: [...state.messages, userMsg],
@@ -80,28 +92,25 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }))
 
     try {
-      // ③ 调用 OrchestratorEngine（传 onEvent 实时收集执行日志 + 刷新资产卡片）
-      const result = await _engine.processUserInput(content, (event) => {
+      // ④ 调用 OrchestratorEngine（传对话窗口 + onEvent 实时收集执行日志 + 刷新资产卡片）
+      const result = await _engine.processUserInput(content, history, (event) => {
         // 追加执行日志
         set((state) => ({
           executionLog: [...state.executionLog, event],
         }))
 
-        // tool 完成时实时刷新对应资产卡片
-        if (event.type === 'tool_complete' && event.toolId) {
-          const toolSpec = getTool(event.toolId)
-          if (toolSpec) {
-            for (const writePath of toolSpec.writes) {
-              useAssetStore.getState().refreshFile(writePath)
-            }
+        // Subagent 完成时实时刷新其写入的资产卡片（writes 由事件携带，精准刷新）
+        if (event.type === 'tool_complete' && event.writes) {
+          for (const writePath of event.writes) {
+            useAssetStore.getState().refreshFile(writePath)
           }
         }
       })
 
-      // ④ 刷新资产文件（兜底全量刷新）
+      // ⑤ 刷新资产文件（兜底全量刷新）
       await useAssetStore.getState().refreshAllFiles()
 
-      // ⑤ 添加系统回复，折叠日志
+      // ⑥ 添加系统回复，折叠日志
       const sysMsg = createSystemMessage(result.response)
       set((state) => ({
         messages: [...state.messages, sysMsg],

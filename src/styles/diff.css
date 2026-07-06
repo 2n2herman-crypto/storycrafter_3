@@ -2,7 +2,8 @@
 
 .diff-add {
   background-color: var(--color-diff-add);
-  text-decoration: none;
+  text-decoration: underline;
+  text-decoration-color: var(--color-accent);
   border-radius: 2px;
   padding: 0 1px;
 }
@@ -10,6 +11,7 @@
 .diff-remove {
   background-color: var(--color-diff-remove);
   text-decoration: line-through;
+  text-decoration-color: var(--color-brown);
   border-radius: 2px;
   padding: 0 1px;
 }
@@ -18,7 +20,7 @@
 
 .markdown-body {
   font-size: 15px;
-  line-height: 1.75;
+  line-height: 1.72;
   color: var(--color-text-primary);
 }
 
@@ -27,7 +29,7 @@
   font-weight: 700;
   margin: 24px 0 16px;
   padding-bottom: 8px;
-  border-bottom: 1px solid var(--color-bg-tertiary);
+  border-bottom: 2px solid var(--color-accent);
   color: var(--color-text-primary);
 }
 
@@ -35,14 +37,14 @@
   font-size: 20px;
   font-weight: 600;
   margin: 20px 0 12px;
-  color: var(--color-text-primary);
+  color: var(--color-accent);
 }
 
 .markdown-body h3 {
   font-size: 17px;
   font-weight: 600;
   margin: 16px 0 8px;
-  color: var(--color-text-primary);
+  color: var(--color-brown);
 }
 
 .markdown-body h4 {
@@ -85,14 +87,14 @@
 
 .markdown-body th,
 .markdown-body td {
-  border: 1px solid var(--color-bg-tertiary);
+  border: 1px solid var(--color-border);
   padding: 10px 14px;
   text-align: left;
   vertical-align: top;
 }
 
 .markdown-body th {
-  background: var(--color-bg-tertiary);
+  background: var(--color-panel-header);
   font-weight: 600;
   color: var(--color-text-primary);
   white-space: nowrap;
@@ -103,20 +105,20 @@
 }
 
 .markdown-body tr:nth-child(even) td {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(43, 39, 28, 0.03);
 }
 
 .markdown-body code {
   font-family: var(--font-mono);
   font-size: 13px;
-  background: var(--color-bg-tertiary);
+  background: var(--color-bg-hover);
   padding: 2px 6px;
   border-radius: 3px;
   color: var(--color-accent);
 }
 
 .markdown-body pre {
-  background: var(--color-bg-tertiary);
+  background: var(--color-bg-hover);
   padding: 14px 18px;
   border-radius: 6px;
   overflow-x: auto;
@@ -133,11 +135,11 @@
 }
 
 .markdown-body blockquote {
-  border-left: 4px solid var(--color-accent);
+  border-left: 4px solid var(--color-brown);
   padding: 4px 0 4px 16px;
   color: var(--color-text-muted);
   margin: 12px 0;
-  background: rgba(76, 110, 245, 0.04);
+  background: rgba(165, 73, 60, 0.06);
   border-radius: 0 4px 4px 0;
 }
 
@@ -158,7 +160,7 @@
 
 .markdown-body hr {
   border: none;
-  border-top: 1px solid var(--color-bg-tertiary);
+  border-top: 1px solid var(--color-border);
   margin: 20px 0;
 }
 

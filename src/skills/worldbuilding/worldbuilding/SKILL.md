@@ -1,3 +1,12 @@
+---
+name: 世界观设定
+description: 处理世界观构建与背景设定，自动区分架空题材（完整设定集）与现实题材（环境概述）
+when: [世界观, 设定, 背景, 架空, 现实, 环境, 时空]
+reads: ['user_requirements.md', 'worldbuilding.md']
+writes: ['worldbuilding.md']
+outputTags: ['<<<WORLDBUILDING_START>>>', '<<<WORLDBUILDING_END>>>']
+---
+
 # 世界观设定
 
 ## 角色定义

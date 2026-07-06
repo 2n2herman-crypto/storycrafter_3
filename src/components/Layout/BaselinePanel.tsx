@@ -23,8 +23,8 @@ export function BaselinePanel({
     <div className={styles.panel}>
       <div className={styles.panelHeader}>
         <div className={styles.title}>
-          {filename || '基线版本'}
-          <span className={styles.badge}>上次确认</span>
+          {filename || '上一版本'}
+          <span className={styles.badge}>上一版本</span>
         </div>
         {lastApprovedAt && (
           <span className={styles.timestamp}>{lastApprovedAt}</span>
@@ -42,7 +42,7 @@ export function BaselinePanel({
             </ReactMarkdown>
           </div>
         ) : (
-          <div className={styles.empty}>选择资产卡片查看内容</div>
+          <div className={styles.empty}>暂无上一版本</div>
         )}
       </div>
     </div>

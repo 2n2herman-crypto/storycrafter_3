@@ -1,23 +1,27 @@
 .resizer {
-  width: var(--divider-width);
+  width: 12px;
   cursor: col-resize;
-  background: var(--color-bg-tertiary);
+  background: transparent;
   flex-shrink: 0;
   position: relative;
   z-index: 10;
-  transition: background 0.15s ease;
 }
 
-.resizer:hover,
-.resizerActive {
-  background: var(--color-accent);
-}
-
-.resizer::after {
+/* hover/拖拽时中间浮现一条细色线 */
+.resizer::before {
   content: '';
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -4px;
-  right: -4px;
+  top: 12px;
+  bottom: 12px;
+  left: 50%;
+  width: 2px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: transparent;
+  transition: background 0.12s ease-out;
+}
+
+.resizer:hover::before,
+.resizerActive::before {
+  background: color-mix(in srgb, var(--color-accent) 55%, transparent);
 }

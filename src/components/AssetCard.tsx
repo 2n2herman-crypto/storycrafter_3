@@ -25,12 +25,22 @@ function getStatusDotClass(status: AssetCardData['status']): string {
   }
 }
 
+/** 状态 → 左侧色条 CSS */
+function getStatusBarClass(status: AssetCardData['status']): string {
+  switch (status) {
+    case 'pending': return styles.cardPending
+    case 'generated': return styles.cardGenerated
+    case 'modified': return styles.cardModified
+  }
+}
+
 export function AssetCard({ data, isSelected, onSelect }: AssetCardProps) {
   const dotClass = getStatusDotClass(data.status)
+  const barClass = getStatusBarClass(data.status)
 
   return (
     <div
-      className={`${styles.card} ${isSelected ? styles.cardSelected : ''}`}
+      className={`${styles.card} ${barClass} ${isSelected ? styles.cardSelected : ''}`}
       onClick={onSelect}
     >
       <span className={styles.icon}>📄</span>

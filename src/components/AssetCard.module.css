@@ -1,26 +1,47 @@
 .card {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
-  border-radius: 6px;
+  padding: 10px 12px 10px 16px;
+  border-radius: var(--radius-card);
   cursor: pointer;
-  transition: all 0.15s ease;
   user-select: none;
-  margin-bottom: 2px;
+  margin-bottom: 4px;
+  background: transparent;
+  transition:
+    background-color 160ms ease-out,
+    box-shadow 180ms ease-out,
+    transform 180ms ease-out;
+}
+
+/* 左侧 4px 状态色条 */
+.card::before {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 10px;
+  bottom: 10px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--color-status-pending);
+  transition: background-color 160ms ease-out;
 }
 
 .card:hover {
   background: var(--color-bg-hover);
+  box-shadow: var(--shadow-panel);
+  transform: translateY(-1px);
 }
 
 .cardSelected {
-  background: var(--color-accent);
-  color: #fff;
+  background: var(--color-accent-soft);
+  color: var(--color-text-primary);
+  box-shadow: inset 0 0 0 1px rgba(74, 90, 168, 0.25);
 }
 
 .cardSelected:hover {
-  background: var(--color-accent-hover);
+  background: #e4e9f6;
 }
 
 .icon {
@@ -71,3 +92,9 @@
 .dotApproved { background: var(--color-status-approved); }
 .dotModified { background: var(--color-status-modified); }
 .dotLocked { background: var(--color-status-locked); }
+
+/* ===== 左侧状态色条按状态着色 ===== */
+
+.cardPending::before { background: var(--color-status-pending); }
+.cardGenerated::before { background: var(--color-status-generated); }
+.cardModified::before { background: var(--color-status-modified); }

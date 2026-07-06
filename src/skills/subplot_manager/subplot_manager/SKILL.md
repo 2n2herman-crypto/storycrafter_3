@@ -1,3 +1,12 @@
+---
+name: 支线管理器
+description: 管理支线生命周期，含开辟 OPEN、合并 MERGE、修改 REFINE 三种模式
+when: [支线, OPEN, MERGE, REFINE, 开辟, 合并]
+reads: ['user_requirements.md', 'characters.md', 'foreshadowing.md', 'act_map.md', 'sequence_list.md', 'scene_beat_outline.md', 'subplots.md']
+writes: ['subplots.md']
+outputTags: ['<<<SUBPLOTS_START>>>', '<<<SUBPLOTS_END>>>']
+---
+
 # 支线管理
 
 ## 角色

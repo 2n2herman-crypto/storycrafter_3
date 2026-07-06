@@ -1,16 +1,19 @@
 import { create } from 'zustand'
 import type { AssetCardData, AssetStatus } from '../types'
 import type { FileManager } from '../orchestrator/fileManager'
-import { TOOL_REGISTRY } from '../orchestrator/toolRegistry'
+import { SUBAGENT_REGISTRY, SKILLS_BY_SUBAGENT } from '../skills/skillLoader'
 
-// ===== 文件→分组 查找表（从 ToolRegistry 构建） =====
+// ===== 文件→分组 查找表（从 Subagent × Skill 构建） =====
 
 function buildAssetMeta(): Record<string, { group: string }> {
   const meta: Record<string, { group: string }> = {}
-  for (const tool of TOOL_REGISTRY) {
-    for (const file of tool.writes) {
-      if (!meta[file]) {
-        meta[file] = { group: tool.group }
+  for (const subagent of SUBAGENT_REGISTRY) {
+    const skills = SKILLS_BY_SUBAGENT.get(subagent.id) ?? []
+    for (const skill of skills) {
+      for (const file of skill.writes) {
+        if (!meta[file]) {
+          meta[file] = { group: subagent.group }
+        }
       }
     }
   }

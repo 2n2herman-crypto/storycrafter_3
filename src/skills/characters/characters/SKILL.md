@@ -1,3 +1,12 @@
+---
+name: 角色设定
+description: 创建或精炼角色列表，包含身份、性格、动机、弧光等属性
+when: [角色, 人物, 主角, 配角, 性格, 动机]
+reads: ['user_requirements.md', 'worldbuilding.md', 'characters.md']
+writes: ['characters.md']
+outputTags: ['<<<CHARACTERS_START>>>', '<<<CHARACTERS_END>>>']
+---
+
 # 角色设定
 
 ## 角色

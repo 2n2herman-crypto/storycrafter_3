@@ -1,3 +1,12 @@
+---
+name: 故事多维度一致性检查
+description: 对全部资产做 7 维度一致性检查并输出分级审查报告
+when: [检查, 审查, 一致性, 校验, check]
+reads: ['user_requirements.md', 'worldbuilding.md', 'characters.md', 'act_map.md', 'sequence_list.md', 'scene_beat_outline.md', 'foreshadowing.md', 'subplots.md', '_check_report.md']
+writes: ['_check_report.md']
+outputTags: ['<<<CHECK_REPORT_START>>>', '<<<CHECK_REPORT_END>>>']
+---
+
 # 故事审查
 
 ## 角色

@@ -1,37 +1,74 @@
-// ===== Tool 注册表 =====
+// ===== Subagent / Skill 注册表（v5.3 四层框架） =====
 
-/** Tool 身份卡（取代 v3 的 AgentSpec） */
-export interface ToolSpec {
-  /** 唯一标识符，作为 Function Calling 的 function.name */
+/**
+ * Subagent 身份卡（取代 v5 的 ToolSpec）
+ *
+ * 四层框架：Orchestrator → Subagent → Skill Router → Skill
+ * Subagent 是 Orchestrator 通过 Function Calling 选择的单元，
+ * 具体执行由其名下的 Skill 承载（见 SkillSpec）。
+ * 磁盘表示：src/skills/<id>/subagent.md（frontmatter + 角色前缀正文）。
+ */
+export interface SubagentSpec {
+  /** 唯一标识符，作为 Function Calling 的 function.name（= 目录名） */
   id: string
 
   /** 人类可读名称（前端展示用） */
   name: string
 
   /**
-   * Tool 描述（最关键字段）
-   * 直接作为 function.description 传给 LLM，
-   * LLM 据此决定是否调用此 Tool。
+   * Subagent 描述（最关键字段）
+   * 直接作为 function.description 传给 Orchestrator LLM，
+   * LLM 据此决定是否调用此 Subagent。
    */
   description: string
 
-  /** Subagent System Prompt 文件路径（src/llm/prompts/ 下的 .md 文件） */
-  systemPromptFile: string
+  /** 前端分组展示标签（如 '基础设定'、'大纲结构'、'微观精铸'） */
+  group: string
+
+  /** 角色定位/任务规划/质量控制前缀，作为 Skill body 的前置 system prompt */
+  preamble: string
+}
+
+/**
+ * Skill 身份卡（可复用能力）
+ *
+ * 磁盘表示：src/skills/<subagentId>/<skillId>/SKILL.md（frontmatter + system prompt 正文）。
+ * 硬约束：Skill 不声明属主 Subagent —— 归属仅由目录路径决定。
+ * per-skill I/O：reads/writes/outputTags 属于 Skill 而非 Subagent。
+ */
+export interface SkillSpec {
+  /** 所属 Subagent（由目录路径推导，非 frontmatter 声明） */
+  subagentId: string
+
+  /** Skill 标识（= 子目录名） */
+  skillId: string
+
+  /** 人类可读名称 */
+  name: string
+
+  /** 供 Skill Router 在 ≥2 skill 时选择的描述 */
+  description: string
+
+  /** 可选：Skill Router 的确定性关键词命中 */
+  when: string[]
 
   /**
    * 上下文隔离边界
-   * 执行此 Tool 时，只读取这些文件注入上下文。
+   * 执行此 Skill 时，只读取这些文件注入上下文。
    */
   reads: string[]
 
-  /** Tool 执行后写入的文件列表 */
+  /** Skill 执行后写入的文件列表 */
   writes: string[]
 
   /** 输出校验 TAG 列表（<<<TAG_START>>> / <<<TAG_END>>>） */
   outputTags: string[]
 
-  /** 前端分组展示标签（如 '基础设定'、'大纲结构'、'微观精铸'） */
-  group: string
+  /** 所属 Subagent 的角色前缀（loader 组装时注入，供 executeTool 直接取用） */
+  preamble: string
+
+  /** Skill system prompt 正文 */
+  body: string
 }
 
 // ===== 资产文件状态 =====
@@ -75,6 +112,17 @@ export interface ChatMessage {
   timestamp: number
 }
 
+/**
+ * 传给引擎的轻量对话轮次（跨轮需求记忆，v5.5）
+ *
+ * chatStore 回传最近若干轮对话给引擎，用于解析指代性澄清
+ * （如"那个再坚强点"）。role 映射：ChatMessage 的 system → assistant。
+ */
+export interface ConversationTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 // ===== 调度相关类型 =====
 
 /** 单次 Tool 执行结果 */
@@ -90,6 +138,12 @@ export interface ToolResult {
 
   /** Tool 输出内容 */
   output?: string
+
+  /** 本次执行实际使用的 Skill ID（四层框架） */
+  skillId?: string
+
+  /** 本次执行实际使用的 Skill 名称 */
+  skillName?: string
 }
 
 /** 调度引擎的运行时状态 */
@@ -151,11 +205,20 @@ export interface ExecutionEvent {
   /** 最大调度轮次 */
   maxRounds?: number
 
-  /** 工具 ID */
+  /** 工具 ID（现语义 = subagent id） */
   toolId?: string
 
-  /** 工具名称（展示用） */
+  /** 工具名称（展示用，现语义 = subagent name） */
   toolName?: string
+
+  /** 本次执行实际使用的 Skill ID（四层框架） */
+  skillId?: string
+
+  /** 本次执行实际使用的 Skill 名称（展示用） */
+  skillName?: string
+
+  /** 本次执行写入的文件列表（供 store 精准刷新资产） */
+  writes?: string[]
 
   /** 当前重试次数 */
   attempt?: number

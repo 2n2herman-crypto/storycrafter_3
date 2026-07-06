@@ -1,3 +1,12 @@
+---
+name: 重置所有内容
+description: 清空所有故事资产，回到初始状态（不调用 LLM）
+when: [重置, 重来, 从头开始, 清空]
+reads: []
+writes: []
+outputTags: []
+---
+
 # 系统重置
 
 ## 角色

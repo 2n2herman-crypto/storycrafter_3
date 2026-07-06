@@ -8,6 +8,10 @@ import { ChatHistory } from './ChatHistory'
 import { useChatStore } from '../../store/chatStore'
 import { useImportStore } from '../../store/importStore'
 
+/**
+ * 对话记录栏（四栏布局第 2 栏）
+ * 纵向：栏标题头 → 聊天历史（占主高度，可滚动） → 文件导入 → 输入框（固定底部）
+ */
 export function BottomPanel() {
   // ===== Stores =====
   const messages = useChatStore((s) => s.messages)
@@ -48,12 +52,14 @@ export function BottomPanel() {
 
   return (
     <div className={styles.panel}>
-      {/* 控制栏 */}
-      <div className={styles.controlsRow}>
-        <ChatInput
-          onSend={handleSend}
-          disabled={chatProcessing}
-        />
+      {/* 栏标题头 */}
+      <div className={styles.panelHeader}>
+        <div className={styles.title}>对话</div>
+      </div>
+
+      {/* 对话历史（占主高度，可滚动） */}
+      <div className={styles.historyArea}>
+        <ChatHistory messages={messages} />
       </div>
 
       {/* 文件导入 */}
@@ -62,8 +68,13 @@ export function BottomPanel() {
         disabled={chatProcessing}
       />
 
-      {/* 对话历史 */}
-      <ChatHistory messages={messages} />
+      {/* 输入框（固定底部） */}
+      <div className={styles.controlsRow}>
+        <ChatInput
+          onSend={handleSend}
+          disabled={chatProcessing}
+        />
+      </div>
     </div>
   )
 }

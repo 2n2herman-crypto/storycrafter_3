@@ -1,3 +1,12 @@
+---
+name: 幕结构设计
+description: 设计或精炼 3-12 幕的宏观结构，含转折点、情感弧线、冲突升级
+when: [幕, 结构, 剧情, 大纲, 转折, 情节点]
+reads: ['user_requirements.md', 'worldbuilding.md', 'characters.md', 'act_map.md']
+writes: ['act_map.md']
+outputTags: ['<<<ACT_MAP_START>>>', '<<<ACT_MAP_END>>>']
+---
+
 # 幕结构设计
 
 ## 角色

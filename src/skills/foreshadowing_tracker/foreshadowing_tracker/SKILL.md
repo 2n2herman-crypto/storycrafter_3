@@ -1,3 +1,12 @@
+---
+name: 伏笔与信息披露追踪
+description: 规划伏笔的铺设与回收位置，分类情感性/功能性/主题性信息
+when: [伏笔, 信息披露, 铺设, 回收, 悬念]
+reads: ['user_requirements.md', 'act_map.md', 'sequence_list.md', 'foreshadowing.md']
+writes: ['foreshadowing.md']
+outputTags: ['<<<FORESHADOWING_START>>>', '<<<FORESHADOWING_END>>>']
+---
+
 # 伏笔与信息披露规划
 
 ## 角色

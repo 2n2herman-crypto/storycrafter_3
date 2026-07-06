@@ -1,3 +1,12 @@
+---
+name: 场景节拍设计
+description: 按序列分组生成场景表与节拍表，嵌入伏笔的铺设与回收
+when: [场景, 节拍, 分镜, 精铸]
+reads: ['user_requirements.md', 'worldbuilding.md', 'characters.md', 'act_map.md', 'sequence_list.md', 'scene_beat_outline.md', 'foreshadowing.md']
+writes: ['scene_beat_outline.md']
+outputTags: ['<<<SCENE_BEAT_OUTLINE_START>>>', '<<<SCENE_BEAT_OUTLINE_END>>>']
+---
+
 # 场景节拍设计
 
 ## 角色
