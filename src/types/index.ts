@@ -69,6 +69,19 @@ export interface SkillSpec {
 
   /** Skill system prompt 正文 */
   body: string
+
+  /**
+   * v6.2 可选结构化校验钩子。
+   *
+   * validateOutput 在完成 START/END tag 提取后调用；返回 null 视作通过，返回 string
+   * 则视作结构错误、消息将作为 retry 反馈追加到 userContent 尾部。
+   *
+   * 该钩子无法通过 SKILL.md frontmatter 声明（自研解析器只吃扁平标量+内联数组）。
+   * 由 orchestratorEngine 在 runPipeline / executeTool 内按 subagentId/skillId 动态挂载。
+   *
+   * 未定义 = 保持既有行为（仅 tag 存在性校验）。
+   */
+  structuralCheck?: (extracted: string) => string | null
 }
 
 // ===== 资产文件状态 =====
@@ -249,6 +262,11 @@ export interface ValidationResult {
   valid: boolean
   missingTags: string[]
   extracted: Record<string, string>
+  /**
+   * v6.2：结构化校验失败原因（SkillSpec.structuralCheck 返回的中文错误消息）。
+   * 仅在 missingTags 为空但结构校验未通过时置位；供 retry 追加具体反馈使用。
+   */
+  structuralError?: string
 }
 
 // ===== IPC 接口（Phase 1b Electron，保留但简化） =====

@@ -13,6 +13,8 @@ export interface FileManager {
   clearFile(path: string): Promise<void>
   listAssetFiles(): Promise<AssetFileInfo[]>
   clearAll(): Promise<void>
+  /** 按 prefix 清理所有匹配的已知资产(v6.1 pipeline 临件回收 _seq/<ID>/ 等;v6.2 起 scene_beats 已不再调用,接口保留供未来他用)，双维护 files Map 与 knownAssetPaths Set 防幽灵条目残留 */
+  clearByPrefix(prefix: string): Promise<void>
 }
 
 /**
@@ -54,6 +56,24 @@ export class InMemoryFileManager implements FileManager {
 
   async clearAll(): Promise<void> {
     this.files.clear()
+  }
+
+  /**
+   * 按 prefix 清理所有匹配的已知资产(v6.1)
+   *
+   * 双维护 files Map 与 knownAssetPaths Set 二者，
+   * 防 clearFile 只清前者导致 listAssetFiles 反复吐 exists:false 幽灵条目污染 UI 卡片面板。
+   * v6.1 主要用途:scene_beats pipeline assemble 成功后回收 _seq/<ID>/*.md 临件;
+   * v6.2 起 scene_beats 已改为内存传递不产临件,本接口不再被引擎自动调用,保留供未来场景。
+   */
+  async clearByPrefix(prefix: string): Promise<void> {
+    const matched = Array.from(this.knownAssetPaths).filter((p) =>
+      p.startsWith(prefix),
+    )
+    for (const p of matched) {
+      this.files.delete(p)
+      this.knownAssetPaths.delete(p)
+    }
   }
 
   // ===== 资产文件列表 =====

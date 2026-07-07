@@ -29,7 +29,6 @@ const FILE_LABELS: Record<string, string> = {
   'characters.md': '角色设定',
   'act_map.md': '幕结构设计',
   'sequence_list.md': '序列清单',
-  'scene_beat_outline.md': '场景节拍大纲',
   'foreshadowing.md': '伏笔与信息披露',
   'subplots.md': '支线管理',
   'user_requirements.md': '用户需求',
@@ -42,6 +41,22 @@ interface AssetState {
   status: AssetStatus
   /** 变化前的内容（用于 diff 对照的左视窗） */
   previousContent?: string
+}
+
+/**
+ * v6.3: 文件名 → 展示标签的解析规则
+ * - 先查静态 FILE_LABELS
+ * - sequences/S1-1.md → "序列 S1-1"
+ * - chapters/S1-1.md → "章节 S1-1"
+ * - 其余回退到去 .md 后缀
+ */
+function computeLabel(path: string): string {
+  if (FILE_LABELS[path]) return FILE_LABELS[path]
+  const seqMatch = path.match(/^sequences\/(.+)\.md$/)
+  if (seqMatch) return `序列 ${seqMatch[1]}`
+  const chMatch = path.match(/^chapters\/(.+)\.md$/)
+  if (chMatch) return `章节 ${chMatch[1]}`
+  return path.replace(/\.md$/, '')
 }
 
 // ===== Store 类型 =====
@@ -189,11 +204,20 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
       .filter(([path]) => !path.startsWith('_'))
       .filter(([path]) => path !== 'draft_history.md')
       .map(([path, state]) => {
+      // v6.1 G.2：pipeline 终品 sequences/<ID>.md 与 writer 正文 chapters/<ID>.md 都是运行期生成、
+      // 未进入构建期 ASSET_META 注册表（后者按各 skill frontmatter 静态 writes 反向建立），
+      // 故此处按路径前缀兜底分组避免它们在 AssetCardPanel 堆成一坨 group='' 空 bucket。
       const meta = ASSET_META[path]
+      const fallbackGroup =
+        path.startsWith('sequences/')
+          ? '大纲切片'
+          : path.startsWith('chapters/')
+            ? '剧本正文'
+            : ''
       return {
         path,
-        filename: FILE_LABELS[path] ?? path.replace(/\.md$/, ''),
-        group: meta?.group ?? '',
+        filename: computeLabel(path),
+        group: meta?.group ?? fallbackGroup,
         status: state.status,
       }
     })

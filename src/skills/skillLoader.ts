@@ -243,11 +243,47 @@ export function getSkills(subagentId: string): SkillSpec[] {
   return SKILLS_BY_SUBAGENT.get(subagentId) ?? []
 }
 
+const NEEDS_TARGET_PARAM = new Set<string>(['scene_beats', 'script_writer'])
+
+function resolveTargetParamName(
+  subagentId: string,
+): 'target_sequence' | 'target_chapter' | null {
+  if (!NEEDS_TARGET_PARAM.has(subagentId)) return null
+  return subagentId === 'script_writer' ? 'target_chapter' : 'target_sequence'
+}
+
 /**
  * 从 SubagentSpec 构建 OpenAI 兼容的 Function Calling 参数
- * 仅暴露 id + description，与 v5 行为一致（保证 FC 面不变）。
+ * 仅暴露 id + description，与 v5 行为一致保证 FC 面 stable。
+ *
+ * scene_beats / script_writer 额外附非必填 target_sequence / target_chapter 参数，
+ * 引擎 executeTool.resolveWriteTarget 据此构造 effectiveWrites 替换 frontmatter writes placeholder。
+ * 格式合法性由 engine dispatch 时硬校验早退拒绝；此处仅在 description 给示例提示引导模型填合规值。
  */
 export function buildFunctionSpec(subagent: SubagentSpec): ChatCompletionTool {
+  const paramName = resolveTargetParamName(subagent.id)
+  const properties: Record<string, { type: string; description: string }> = {
+    instruction: {
+      type: 'string',
+      description: `传递给 ${subagent.name} 的具体修改指令。从用户原始需求中提取与此工具相关的部分，去掉无关内容。`,
+    },
+  }
+
+  if (paramName !== null) {
+    const isChapter = paramName === 'target_chapter'
+    const kindLabel = isChapter ? '目标章节' : '目标序列'
+    const sinkHint = isChapter
+      ? 'chapters/<target>.md 正文成品'
+      : '两步 LLM(scene_designer → beat_writer)后由引擎代码拼装至 sequences/<target>.md 场记切片'
+    properties[paramName] = {
+      type: 'string',
+      description:
+        `${kindLabel}标识符，形如 \`S1-1\`(主层级)或 \`SC-S1-1-01\`(细粒度子级)；` +
+        `引擎据其拼装写入路径：${sinkHint}；` +
+        `缺值或格式非法将由 Guard 早退拒绝、不下沉给模型重试以免白白消耗 retry 配额。`,
+    }
+  }
+
   return {
     type: 'function',
     function: {
@@ -255,12 +291,7 @@ export function buildFunctionSpec(subagent: SubagentSpec): ChatCompletionTool {
       description: subagent.description,
       parameters: {
         type: 'object',
-        properties: {
-          instruction: {
-            type: 'string',
-            description: `传递给 ${subagent.name} 的具体修改指令。从用户原始需求中提取与此工具相关的部分，去掉无关内容。`,
-          },
-        },
+        properties,
         required: ['instruction'],
       },
     },

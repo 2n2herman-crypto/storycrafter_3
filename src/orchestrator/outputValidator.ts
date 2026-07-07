@@ -27,18 +27,29 @@ export function validateOutput(output: string, skill: SkillSpec): ValidationResu
   if (!output.includes(endTag)) missingTags.push(endTag)
 
   const extracted: Record<string, string> = {}
+  let structuralError: string | undefined
   if (missingTags.length === 0) {
     const content = extractBetween(output, startTag, endTag)
     if (content !== null && skill.writes.length > 0) {
+      // v6.2：结构化钩子（scene_designer 场景表列数/ID 格式、beat_writer 节拍类型词库
+      // 与 SC-ID 跨表引用完整性等）在 tag 提取通过后再跑一遍，把"仅 tag 存在性"升级为
+      // "格式 + 引用完整性"两级校验，让 retry 拿到具体错位反馈而非盲重试烧配额。
+      if (skill.structuralCheck) {
+        const err = skill.structuralCheck(content)
+        if (err) {
+          return { valid: false, missingTags: [], extracted: {}, structuralError: err }
+        }
+      }
       // 写入第一个 writes 文件（大多数 Skill 只写一个文件）
       extracted[skill.writes[0]] = content
     }
   }
 
   return {
-    valid: missingTags.length === 0,
+    valid: missingTags.length === 0 && structuralError === undefined,
     missingTags,
     extracted,
+    structuralError,
   }
 }
 

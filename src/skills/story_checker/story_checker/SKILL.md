@@ -2,7 +2,7 @@
 name: 故事多维度一致性检查
 description: 对全部资产做 7 维度一致性检查并输出分级审查报告
 when: [检查, 审查, 一致性, 校验, check]
-reads: ['user_requirements.md', 'worldbuilding.md', 'characters.md', 'act_map.md', 'sequence_list.md', 'scene_beat_outline.md', 'foreshadowing.md', 'subplots.md', '_check_report.md']
+reads: ['user_requirements.md', 'worldbuilding.md', 'characters.md', 'act_map.md', 'sequence_list.md', 'sequences/*.md', 'foreshadowing.md', 'subplots.md', '_check_report.md']
 writes: ['_check_report.md']
 outputTags: ['<<<CHECK_REPORT_START>>>', '<<<CHECK_REPORT_END>>>']
 ---
@@ -25,7 +25,7 @@ outputTags: ['<<<CHECK_REPORT_START>>>', '<<<CHECK_REPORT_END>>>']
 - `<characters>`：角色设定
 - `<act_map>`：幕结构
 - `<sequence_list>`：序列清单
-- `<scene_beat_outline>`：场景节拍
+- `<scene_beats_slices>`：场景节拍切片（所有序列的聚合）
 - `<foreshadowing>`：伏笔/信息披露规划
 - `<subplots>`：支线管理记录
 - `<user_requirements>`：用户原始需求文档
@@ -46,7 +46,7 @@ outputTags: ['<<<CHECK_REPORT_START>>>', '<<<CHECK_REPORT_END>>>']
 
 ### 维度 1：伏笔/信息披露完整性
 
-检查 foreshadowing.md 中的规划是否在 scene_beat_outline.md 中被正确执行：
+检查 foreshadowing.md 中的规划是否在 sequences/<ID>.md 中被正确执行：
 
 | 检查点 | 说明 |
 |--------|------|
@@ -103,7 +103,7 @@ outputTags: ['<<<CHECK_REPORT_START>>>', '<<<CHECK_REPORT_END>>>']
 |--------|------|
 | 世界观需求 | user_requirements.md 中"世界观"列出的每条需求是否在 worldbuilding.md 中得到体现 |
 | 角色需求 | 用户对特定角色的要求（身份、性格、关系）是否在 characters.md 中正确实现 |
-| 剧情方向需求 | 用户指定的剧情方向、冲突、转折是否在 act_map / sequence_list / scene_beat_outline 中得到遵循 |
+| 剧情方向需求 | 用户指定的剧情方向、冲突、转折是否在 act_map / sequence_list / sequences/<ID>.md 中得到遵循 |
 | 基调和风格需求 | 用户要求的风格/基调是否在场景节拍中保持一致 |
 
 ---
@@ -145,8 +145,8 @@ outputTags: ['<<<CHECK_REPORT_START>>>', '<<<CHECK_REPORT_END>>>']
 
 | 严重等级 | 问题描述 | 所在文件 | 建议修复方向 |
 |---------|---------|---------|------------|
-| critical | 伏笔 F-02 缺失... | scene_beat_outline.md: S1-3 场景 | 在 S1-3 中增加铺设 F-02 的场景 |
-| major | 主角行为与性格不符... | scene_beat_outline.md: SC-S2-1-02 | 修改节拍动作，使主角更主动 |
+| critical | 伏笔 F-02 缺失... | sequences/S1-3.md: SC-... | 在 S1-3 中增加铺设 F-02 的场景 |
+| major | 主角行为与性格不符... | sequences/S2-1.md: SC-... | 修改节拍动作，使主角更主动 |
 | minor | 序列 S2-2 缺少... | sequence_list.md | 建议补充可选钩子 |
 
 ### 严重等级说明

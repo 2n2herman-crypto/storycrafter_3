@@ -46,6 +46,58 @@
   user-select: none;
 }
 
+/* ===== 折叠分组 ===== */
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 6px;
+  transition: background 0.15s ease;
+}
+
+.groupHeader:hover {
+  background: var(--color-bg-hover);
+}
+
+.groupArrow {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+  width: 12px;
+  text-align: center;
+}
+
+.groupTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+}
+
+.groupCount {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  font-weight: 500;
+}
+
+.groupStatusBadge {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.groupStatusBadge[data-kind='idle'] { color: var(--color-status-pending); }
+.groupStatusBadge[data-kind='ready'] { color: var(--color-status-generated); }
+.groupStatusBadge[data-kind='modified'] { color: var(--color-status-modified); }
+
+.subList {
+  padding-left: 8px;
+}
+
 /* ===== 资产卡片 ===== */
 
 .card {
