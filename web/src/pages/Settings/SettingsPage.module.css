@@ -1,0 +1,250 @@
+.wrap {
+  height: 100vh;
+  overflow: auto;
+  padding: 24px;
+  background: var(--color-bg-primary);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.header h2 {
+  margin: 0;
+  font-size: 20px;
+  color: var(--color-brown);
+}
+
+.backBtn {
+  padding: 6px 14px;
+  border: 1px solid var(--color-bg-secondary);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-elevated);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.backBtn:hover {
+  background: var(--color-bg-tertiary);
+}
+
+.section {
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sectionHead h3 {
+  margin: 0;
+  font-size: 16px;
+  color: var(--color-accent);
+}
+
+.hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-text-secondary, #888);
+  line-height: 1.5;
+}
+
+.empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--color-text-secondary, #888);
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-card);
+}
+
+.profileCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-bg-secondary);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
+}
+
+.profileHead {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.nameInput {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--color-bg-secondary);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-tertiary);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.activeLabel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.delBtn {
+  padding: 4px 10px;
+  border: 1px solid var(--color-brown);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-brown);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.field span {
+  color: var(--color-text-secondary, #888);
+}
+
+.field em {
+  font-style: normal;
+  opacity: 0.7;
+}
+
+.field input {
+  padding: 6px 10px;
+  border: 1px solid var(--color-bg-secondary);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-tertiary);
+  font-size: 13px;
+  font-family: var(--font-mono);
+}
+
+.profileFoot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.testBtn {
+  padding: 5px 14px;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: var(--color-accent);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.testBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.ok {
+  font-size: 12px;
+  color: #4a8a5a;
+}
+
+.fail {
+  font-size: 12px;
+  color: var(--color-brown);
+}
+
+.addBtn {
+  padding: 5px 12px;
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-control);
+  background: var(--color-accent);
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.saveBtn {
+  align-self: flex-start;
+  padding: 8px 24px;
+  border: none;
+  border-radius: var(--radius-control);
+  background: var(--color-button-primary);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.saveBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error {
+  padding: 10px 14px;
+  background: #f7e6e2;
+  border-radius: var(--radius-control);
+  color: var(--color-brown);
+  font-size: 13px;
+  margin: 0;
+}
+
+/* v7.1 M5：Skill 库列表 */
+.skillList {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.skillRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: var(--radius-control);
+  font-size: 13px;
+}
+
+.skillName {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  min-width: 120px;
+}
+
+.skillPath {
+  flex: 1;
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-family: monospace;
+}
+
+.skillBadge {
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.skillBuiltin {
+  background: var(--color-border);
+  color: var(--color-text-secondary);
+}
+
+.skillUser {
+  background: rgba(74, 90, 168, 0.12);
+  color: var(--color-accent);
+}

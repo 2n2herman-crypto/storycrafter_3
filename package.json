@@ -4,11 +4,12 @@
   "version": "0.0.1",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev": "concurrently -k -n web,server -c cyan,magenta \"vite\" \"npm run dev --prefix server\"",
+    "build": "tsc -b && vite build && npm run build --prefix server",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "npm run start --prefix server"
   },
   "dependencies": {
     "diff": "^5.2.0",
@@ -26,6 +27,7 @@
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.1",
+    "concurrently": "^9.0.0",
     "eslint": "^9.5.0",
     "typescript": "^5.5.2",
     "vite": "^5.3.1"
