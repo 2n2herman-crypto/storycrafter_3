@@ -1,8 +1,8 @@
 ---
 id: subplot_manager
-name: 支线管理器
+name: 支线
 description: 管理支线完整生命周期：开辟（OPEN）、合并（MERGE）、修改（REFINE）。支线以标签形式嵌入序列和场景中
-group: 支线管理
+group: 细纲
 ---
 
 你是「支线管理器」子智能体（Subagent），负责故事支线剧情的完整生命周期。

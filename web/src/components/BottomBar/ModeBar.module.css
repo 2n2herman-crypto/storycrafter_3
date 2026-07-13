@@ -1,0 +1,118 @@
+/* 创作模式选择器（v7.1 改动2，配色对齐设计稿 v8 sc-mode-bar 默认亮色） */
+
+.modeBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 14px 9px;
+  flex-shrink: 0;
+}
+
+.label {
+  font-size: 10px;
+  font-weight: 500;
+  color: #6d746f;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  white-space: nowrap;
+}
+
+.switcher {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  background: #e9e1d4;
+  border: 1px solid #d3c7b5;
+  border-radius: 10px;
+  transition:
+    max-width 0.34s ease,
+    flex-basis 0.34s ease,
+    background 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.btn {
+  min-width: 0;
+  padding: 5px 3px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #74666b;
+  font-size: 10px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.btn:hover:not(:disabled) {
+  color: #2b1d22;
+}
+
+.btn.active {
+  background: #fbf8f0;
+  color: #782e3f;
+  border-color: rgba(139, 53, 72, 0.2);
+  box-shadow: 0 2px 7px rgba(43, 29, 34, 0.07);
+}
+
+.btn:disabled {
+  cursor: default;
+}
+
+/* ===== 写作期锁定态（暗红，只保留 active 按钮）===== */
+
+.modeBar.locked .label {
+  color: #7e3042;
+}
+
+.modeBar.locked .switcher {
+  display: flex;
+  flex: 0 0 auto;
+  width: auto;
+  max-width: 132px;
+  margin-left: auto;
+  background: rgba(139, 53, 72, 0.06);
+  border-color: rgba(139, 53, 72, 0.22);
+}
+
+.modeBar.locked .btn {
+  flex: 1 1 0;
+  transition:
+    max-width 0.32s ease,
+    opacity 0.22s ease,
+    padding 0.32s ease,
+    border-width 0.22s ease;
+}
+
+.modeBar.locked .btn:not(.active) {
+  flex: 0 0 0;
+  max-width: 0;
+  min-width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  border-width: 0;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.modeBar.locked .btn.active {
+  flex: 0 0 auto;
+  max-width: 128px;
+  padding: 5px 10px;
+  cursor: default;
+}
+
+.modeBar.locked .btn.active::after {
+  content: ' · 已锁定';
+  color: #9b6873;
+  font-size: 9px;
+  font-weight: 400;
+}

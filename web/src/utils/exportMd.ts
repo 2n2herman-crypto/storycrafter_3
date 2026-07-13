@@ -22,3 +22,14 @@ export function downloadText(filename: string, content: string, mime = 'text/mar
   const blob = new Blob([content], { type: `${mime};charset=utf-8` })
   triggerDownload(blob, filename)
 }
+
+/**
+ * 全量导出：把多个资产合并为单一 Markdown。
+ * 每段以 `# <标题>` 作分节标题，段间用分隔线，供 MD 直下或转 Word。
+ */
+export function buildAllMarkdown(items: { title: string; content: string }[]): string {
+  return items
+    .filter((it) => it.content.trim())
+    .map((it) => `# ${it.title}\n\n${it.content.trim()}`)
+    .join('\n\n---\n\n')
+}

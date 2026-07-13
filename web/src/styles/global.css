@@ -1,60 +1,59 @@
 :root {
-  /* v5.4 米白纸张主题 */
-  --color-bg-primary: #e9e6dc;
-  --color-bg-secondary: #f5f3ea;
-  --color-bg-tertiary: #fbfaf4;
-  --color-bg-elevated: #fffdf7;
-  --color-bg-hover: #efeadb;
-  --color-panel-header: #f0eee4;
-  --color-border: #ddd8c8;
-  --color-border-strong: #cbc4ad;
+  /* v8 深绛红黑主题（V5 LITERARY 调色 + V6 圆角 + V8 深绛画布级联后的最终可见值） */
+  --color-bg-primary: #170a0e; /* 画布：深绛黑（body 底色） */
+  --color-bg-secondary: #f2eee5; /* paper */
+  --color-bg-tertiary: #fbf8f0; /* paper-card */
+  --color-bg-elevated: #fbf8f0;
+  --color-bg-hover: #e8e0d2; /* paper-warm */
+  --color-panel-header: #e8e0d2;
+  --color-border: #d7cdbc;
+  --color-border-strong: #c7bba6;
+  --color-border-light: #e6ded1;
 
-  --color-text-primary: #171713;
-  --color-text-secondary: #676356;
-  --color-text-muted: #9a9484;
+  --color-text-primary: #2b1d22; /* ink */
+  --color-text-secondary: #74666b; /* ink-muted */
+  --color-text-muted: #9e9596; /* ink-ghost */
 
-  --color-accent: #4a5aa8;
-  --color-accent-hover: #3c4c96;
-  --color-accent-soft: #eceff8;
-  --color-brown: #a5493c;
-  --color-brown-hover: #8f3d31;
-  --color-brown-soft: #f5e9e5;
-  --color-success: #46c774;
-  --color-warning: #f3b000;
-  --color-danger: #df4652;
-  --color-info: #5fc0df;
-  --color-button-primary: #cbc895;
-  --color-button-primary-hover: #d8d4a7;
+  --color-accent: #8b3548; /* accent-red 绛红 */
+  --color-accent-hover: #70283a;
+  --color-accent-soft: rgba(139, 53, 72, 0.08);
+  --color-brown: #a47b3e; /* accent-gold */
+  --color-brown-hover: #8d6733;
+  --color-brown-soft: rgba(164, 123, 62, 0.12);
+  --color-success: #4f8a5b;
+  --color-warning: #a47b3e;
+  --color-danger: #8b3548;
+  --color-info: #67505a; /* accent-slate */
+  --color-button-primary: #8b3548;
+  --color-button-primary-hover: #70283a;
 
   /* Diff 高亮 */
-  --color-diff-add: rgba(74, 90, 168, 0.15);
-  --color-diff-remove: rgba(165, 73, 60, 0.15);
+  --color-diff-add: rgba(79, 138, 91, 0.16);
+  --color-diff-remove: rgba(139, 53, 72, 0.16);
 
   /* 卡片状态圆点 */
-  --color-status-pending: #9a9484;
-  --color-status-generated: #4a5aa8;
-  --color-status-approved: #46c774;
-  --color-status-modified: #a5493c;
-  --color-status-locked: #9a9484;
+  --color-status-pending: #9e9596;
+  --color-status-generated: #67505a;
+  --color-status-approved: #4f8a5b;
+  --color-status-modified: #a47b3e;
+  --color-status-locked: #9e9596;
 
   /* 布局 */
-  --header-height: 56px;
+  --header-height: 54px;
   --bottom-panel-height: 180px;
   --panel-min-width: 220px;
   --divider-width: 10px;
-  --radius-panel: 22px;
-  --radius-card: 14px;
+  --radius-panel: 18px; /* radius-xl */
+  --radius-card: 14px; /* radius-lg */
   --radius-control: 999px;
-  --shadow-soft: 0 18px 48px rgba(43, 39, 28, 0.12);
-  --shadow-panel: 0 8px 24px rgba(43, 39, 28, 0.08);
-  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  --shadow-soft: 0 26px 76px rgba(5, 0, 2, 0.48);
+  --shadow-panel: 0 2px 8px rgba(43, 29, 34, 0.05);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6);
 
-  /* 字体 */
+  /* 字体（v8 全文衬线） */
   --font-mono: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
-  --font-display: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'PingFang SC',
-    'Microsoft YaHei', sans-serif;
-  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
-    'Microsoft YaHei', sans-serif;
+  --font-display: 'Noto Serif SC', 'Songti SC', 'Source Han Serif SC', serif;
+  --font-sans: 'Noto Serif SC', 'Songti SC', 'Source Han Serif SC', serif;
 }
 
 *,
@@ -94,8 +93,8 @@ a:hover {
 
 /* 滚动条样式 */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -103,10 +102,10 @@ a:hover {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cfc8b5;
-  border-radius: 3px;
+  background: var(--color-border);
+  border-radius: 10px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #bdb49d;
+  background: var(--color-text-muted);
 }

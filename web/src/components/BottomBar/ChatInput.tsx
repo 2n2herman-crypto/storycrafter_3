@@ -46,8 +46,9 @@ export function ChatInput({
         className={styles.sendBtn}
         onClick={handleSend}
         disabled={disabled || !text.trim()}
+        title="发送"
       >
-        发送
+        ➤
       </button>
     </div>
   )

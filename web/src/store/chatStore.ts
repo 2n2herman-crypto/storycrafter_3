@@ -3,6 +3,7 @@ import type { ChatMessage, ExecutionEvent, ConversationTurn } from '../types'
 import type { ProductKind } from '../types/product'
 import type { OrchestratorEngine } from '../orchestrator/orchestratorEngine'
 import { useAssetStore } from './assetStore'
+import { usePhaseStore } from './phaseStore'
 import { classifyLLMError } from '../utils/llmError'
 import { loadChat, appendChatMessage, appendChatEvent, clearChat } from '../api/chat'
 
@@ -31,6 +32,8 @@ interface ChatStore {
   setProduct: (kind: ProductKind) => void
   /** v6.6：投喂文件落到 _input_raw.md（input_normalizer 生产端）*/
   appendInputRaw: (filename: string, content: string) => Promise<void>
+  /** v7.1 改动3：StageCard 用户点选阶段——复用 phaseStore.lock/unlock，并把该卡置只读态 */
+  resolveStage: (msgId: string, stage: 'designing' | 'writing') => Promise<void>
 }
 
 // ===== 工具函数 =====
@@ -57,6 +60,18 @@ function createSystemMessage(content: string): ChatMessage {
     role: 'system',
     content,
     timestamp: Date.now(),
+  }
+}
+
+/** v7.1 改动3：生成一张待选的 StageCard 提问消息（对话流内渲染，不持久化——交互 UI 态） */
+function createStageProposalMessage(): ChatMessage {
+  return {
+    id: nextId(),
+    role: 'system',
+    content: '请选择创作阶段',
+    timestamp: Date.now(),
+    kind: 'stage_proposal',
+    stageState: 'pending',
   }
 }
 
@@ -163,6 +178,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         isLogExpanded: false,
       }))
       persistMessage(sysMsg)
+
+      // ⑥.5 v7.1 改动3：引擎探测到"全部场记完成且仍处设计期" → 追加一张 StageCard 提问。
+      //      避免重复：对话流中若已存在待选（pending）的 StageCard 则不再追加。
+      if (result.stageProposal) {
+        const hasPendingCard = get().messages.some(
+          (m) => m.kind === 'stage_proposal' && m.stageState === 'pending',
+        )
+        if (!hasPendingCard) {
+          set((state) => ({ messages: [...state.messages, createStageProposalMessage()] }))
+        }
+      }
     } catch (error) {
       const classified = classifyLLMError(error)
       const errorMsg = createSystemMessage(
@@ -213,5 +239,34 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   appendInputRaw: async (filename: string, content: string) => {
     if (!_engine) return
     await _engine.appendInputRaw(filename, content)
+  },
+
+  resolveStage: async (msgId: string, stage: 'designing' | 'writing') => {
+    const phase = usePhaseStore.getState()
+    // 写作阶段 → 复用 phaseStore.lock（拍照 baselines/冻结序列/Guard 生效）；
+    // 设计阶段 → 写作期则 unlock 回退，已在设计期则 NOP。lock 前置校验失败时保留卡片可重试。
+    try {
+      if (stage === 'writing') {
+        const fm = useAssetStore.getState().fileManager
+        if (!fm) return
+        await phase.lock(fm)
+      } else if (phase.isWriting()) {
+        phase.unlock()
+      }
+    } catch (e) {
+      // lock 校验未过（核心设定缺失）→ 提示用户，保留 StageCard 待选态
+      get().addMessage(
+        createSystemMessage(`⚠️ ${e instanceof Error ? e.message : String(e)}`),
+      )
+      return
+    }
+    // 该卡片置只读态，记录落定阶段
+    set((state) => ({
+      messages: state.messages.map((m) =>
+        m.id === msgId
+          ? { ...m, stageState: 'resolved' as const, resolvedStage: stage }
+          : m,
+      ),
+    }))
   },
 }))

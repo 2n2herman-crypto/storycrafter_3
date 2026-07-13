@@ -319,6 +319,11 @@ function isResetSkill(skill: SkillSpec): boolean {
   return skill.writes.length === 0 && skill.outputTags.length === 0
 }
 
+/** 截断字符串到指定长度，超出加省略号（v7.2：执行日志时间线副标题用） */
+function truncate(text: string, maxLen: number): string {
+  return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text
+}
+
 // ===== 上下文管理 =====
 
 /**
@@ -1181,6 +1186,24 @@ export class OrchestratorEngine {
     return [...set].sort()
   }
 
+  /**
+   * v7.1 改动3：只读探测——是否到了"该开写"的时机（供 processUserInput 结束时置 stageProposal）。
+   *
+   * 条件：仍处设计期 + sequence_list.md 能解析出 ≥1 个 seqId + 每个 seqId 对应的
+   * sequences/<id>.md 均已落盘且非空。纯读、不改任何状态，与 phaseStore.lock 前置校验解耦。
+   */
+  private async probeAllScenesReady(): Promise<boolean> {
+    if (!usePhaseStore.getState().isDesigning()) return false
+    const seqListMd = await safeRead(this.fileManager, 'sequence_list.md')
+    const seqIds = this.parseSequenceIds(seqListMd)
+    if (seqIds.length === 0) return false
+    for (const id of seqIds) {
+      const c = await safeRead(this.fileManager, `sequences/${id}.md`)
+      if (!c || c.trim().length === 0) return false
+    }
+    return true
+  }
+
   /** v6.7 建档骨架：带标题占位，让 UI 立即出现卡片 */
   private buildSequenceSkeleton(seqId: string): string {
     return `<<<SCENE_BEAT_OUTLINE_START>>>\n# ${seqId}\n\n### 场景表\n\n*（生成中…）*\n\n### 节拍\n\n*（生成中…）*\n<<<SCENE_BEAT_OUTLINE_END>>>`
@@ -1713,6 +1736,7 @@ export class OrchestratorEngine {
             success: true,
             results: state.toolResults,
             response: message.content || '处理完成',
+            stageProposal: await this.probeAllScenesReady(),
           }
 
         case 'tool_calls': {
@@ -1768,6 +1792,7 @@ export class OrchestratorEngine {
               round: state.currentRound + 1,
               maxRounds: state.maxRounds,
               message: `调用：${subagentSpec.name}`,
+              instruction: instruction ? truncate(instruction, 40) : undefined,
             })
 
             const result = await this.executeTool(subagentSpec, instruction, undefined, {
@@ -1884,6 +1909,7 @@ export class OrchestratorEngine {
       success: true,
       results: state.toolResults,
       response: auditMsg,
+      stageProposal: await this.probeAllScenesReady(),
     }
   }
 }

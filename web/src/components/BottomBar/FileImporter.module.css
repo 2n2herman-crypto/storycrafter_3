@@ -1,9 +1,8 @@
 .bar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 16px;
-  border-bottom: 1px solid var(--color-border);
+  gap: 4px;
+  padding: 0 14px 6px;
   flex-shrink: 0;
   cursor: default;
 }
@@ -14,13 +13,13 @@
 }
 
 .hint {
-  font-size: 11px;
+  font-size: 10px;
   color: var(--color-text-muted);
 }
 
 .btn {
-  font-size: 11px;
-  padding: 3px 10px;
+  font-size: 10px;
+  padding: 2px 8px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-control);
   background: transparent;

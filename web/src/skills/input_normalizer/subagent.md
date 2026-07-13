@@ -1,6 +1,6 @@
 ---
 id: input_normalizer
-name: 输入归一化器
+name: 输入归一化
 description: 读取用户投喂的 _input_raw.md 原始文件，按内容类型分类判定（纯概念/梗概大纲/已有原文/设定资料/结构化表格），反向抽取或重组为对应种子资产（worldbuilding/characters/act_map/sequence_list/user_requirements）。仅在产品已选定、且存在未归一化的 _input_raw.md 时由引擎前置触发
 group: 输入归一化
 ---

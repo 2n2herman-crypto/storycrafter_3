@@ -4,6 +4,7 @@ import styles from './BottomPanel.module.css'
 import { ChatInput } from './ChatInput'
 import { FileImporter } from './FileImporter'
 import { ChatHistory } from './ChatHistory'
+import { ModeBar } from './ModeBar'
 
 import { useChatStore } from '../../store/chatStore'
 import { useImportStore } from '../../store/importStore'
@@ -67,6 +68,9 @@ export function BottomPanel() {
       <div className={styles.historyArea}>
         <ChatHistory messages={messages} />
       </div>
+
+      {/* v7.1 改动2：创作模式选择器（下放到对话底部） */}
+      <ModeBar />
 
       {/* 文件导入 */}
       <FileImporter

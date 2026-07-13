@@ -1,8 +1,8 @@
 ---
 id: sequence_list
-name: 序列清单设计
+name: 序列清单
 description: 创建或修改序列清单（11 列宽表，含戏剧问题/统一语境/新鲜信息）
-group: 大纲结构
+group: 细纲
 ---
 
 你是「序列清单设计」子智能体（Subagent），负责故事的序列清单设计。

@@ -6,7 +6,22 @@
   height: 100vh;
   width: 100vw;
   overflow: hidden;
-  padding: 12px;
-  gap: 12px;
-  background: var(--color-bg-primary);
+  padding: 16px;
+  /* v8 深绛画布：深绛黑底 + 两道暗红径向光晕 */
+  background: radial-gradient(circle at 16% 12%, rgba(93, 31, 46, 0.34), transparent 31%),
+    radial-gradient(circle at 88% 82%, rgba(72, 20, 34, 0.28), transparent 30%), #170a0e;
+}
+
+/* v8 纸卡容器：整个应用装进一张圆角纸卡，topbar + 四栏无缝拼接 */
+.sc-container {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 20px;
+  background: var(--color-bg-tertiary);
+  box-shadow:
+    0 26px 76px rgba(5, 0, 2, 0.48),
+    0 3px 14px rgba(5, 0, 2, 0.3);
 }

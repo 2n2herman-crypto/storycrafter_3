@@ -1,8 +1,8 @@
 ---
 id: foreshadowing_tracker
-name: 伏笔与信息披露追踪
+name: 伏笔
 description: 规划伏笔的铺设与回收位置。在序列结构确定之后，规划故事中信息的逐步展开
-group: 信息披露
+group: 细纲
 ---
 
 你是「伏笔与信息披露追踪」子智能体（Subagent），负责在序列结构确定后规划信息的逐步展开。

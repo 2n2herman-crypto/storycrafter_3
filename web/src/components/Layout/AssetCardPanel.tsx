@@ -3,12 +3,17 @@ import type { AssetCardData, AssetStatus } from '../../types'
 import { AssetCard } from '../AssetCard'
 import { useUIStore } from '../../store/uiStore'
 import { usePhaseStore } from '../../store/phaseStore'
+import { useAssetStore } from '../../store/assetStore'
+import { buildAllMarkdown, downloadText, triggerDownload } from '../../utils/exportMd'
+import { exportDocx } from '../../api/importExport'
 import styles from './AssetCardPanel.module.css'
 
 interface AssetCardPanelProps {
   cards: AssetCardData[]
   selectedPath: string | null
   onSelect: (path: string) => void
+  /** v7.1 改动5：Word 全量导出是否可用（降级模式无后端 → 关闭） */
+  wordExportAvailable?: boolean
 }
 
 /** 分组后的卡片列表 */
@@ -20,7 +25,7 @@ interface GroupedCards {
 // ===== 聚合常量 =====
 
 /** 进入折叠视图的分组名（其余组保持平铺） */
-const COLLAPSIBLE_GROUPS = new Set(['大纲切片', '剧本正文'])
+const COLLAPSIBLE_GROUPS = new Set(['细纲', '剧本'])
 
 /** 子项数量 ≤ 此值时降级为平铺（不折叠） */
 const COLLAPSE_MIN_COUNT = 2
@@ -177,12 +182,81 @@ function CollapsibleSection({
   )
 }
 
+// ===== 全量导出头部 =====
+
+interface ExportHeaderProps {
+  cards: AssetCardData[]
+  wordExportAvailable?: boolean
+}
+
+/**
+ * v7.1 改动5：资产面板全量导出。
+ * 把所有已生成/已修改资产的内容按卡片顺序合并为单一 Markdown（buildAllMarkdown），
+ * MD 纯前端下载；Word 复用后端 /api/export/docx 单次转换（降级模式关闭）。
+ */
+function ExportHeader({ cards, wordExportAvailable }: ExportHeaderProps) {
+  const [exporting, setExporting] = useState(false)
+  const assets = useAssetStore((s) => s.assets)
+
+  const items = cards
+    .map((c) => ({ title: c.filename, content: assets[c.path]?.content ?? '' }))
+    .filter((it) => it.content.trim())
+  const hasContent = items.length > 0
+
+  const handleExportMd = () => {
+    downloadText('全量资产.md', buildAllMarkdown(items))
+  }
+
+  const handleExportWord = async () => {
+    setExporting(true)
+    try {
+      const blob = await exportDocx(buildAllMarkdown(items), '全量资产')
+      triggerDownload(blob, '全量资产.docx')
+    } catch (e) {
+      alert(`Word 导出失败: ${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  return (
+    <div className={styles.panelHeader}>
+      <div className={styles.title}>资产卡片</div>
+      <div className={styles.exportGroup}>
+        <button
+          className={styles.exportBtn}
+          onClick={handleExportMd}
+          disabled={!hasContent}
+          title={hasContent ? '导出全部资产为 Markdown' : '暂无可导出内容'}
+        >
+          全量 MD
+        </button>
+        <button
+          className={styles.exportBtn}
+          onClick={handleExportWord}
+          disabled={!hasContent || exporting || !wordExportAvailable}
+          title={
+            !wordExportAvailable
+              ? '降级模式下 Word 导出不可用'
+              : hasContent
+                ? '导出全部资产为 Word'
+                : '暂无可导出内容'
+          }
+        >
+          {exporting ? '导出中...' : '全量 Word'}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // ===== 主组件 =====
 
 export function AssetCardPanel({
   cards,
   selectedPath,
   onSelect,
+  wordExportAvailable,
 }: AssetCardPanelProps) {
   const sections = groupBySection(cards)
   const phase = usePhaseStore((s) => s.phase)
@@ -194,9 +268,9 @@ export function AssetCardPanel({
   // v6.4：phase 切换时联动折叠状态
   useEffect(() => {
     if (prevPhaseRef.current === 'designing' && phase === 'writing') {
-      // 进入写作期：折叠所有非「剧本正文」组，展开「剧本正文」
+      // 进入写作期：折叠所有非「剧本」组，展开「剧本」
       for (const { group } of sections) {
-        if (group === '剧本正文') {
+        if (group === '剧本') {
           setSectionCollapsed(group, false)
         } else {
           setSectionCollapsed(group, true)
@@ -217,9 +291,7 @@ export function AssetCardPanel({
   if (cards.length === 0) {
     return (
       <div className={styles.panel}>
-        <div className={styles.panelHeader}>
-          <div className={styles.title}>资产卡片</div>
-        </div>
+        <ExportHeader cards={cards} wordExportAvailable={wordExportAvailable} />
         <div className={styles.body}>
           <div className={styles.empty}>暂无资产卡片</div>
         </div>
@@ -227,18 +299,16 @@ export function AssetCardPanel({
     )
   }
 
-  // v6.4：写作期分组——「剧本正文」单独放，其余全部收入「大纲设计」父级
+  // v6.4：写作期分组——「剧本」单独放，其余全部收入「大纲设计」父级
   const isWriting = phase === 'writing'
-  const bodySections = sections.filter(({ group }) => group === '剧本正文')
-  const designSections = sections.filter(({ group }) => group !== '剧本正文')
+  const bodySections = sections.filter(({ group }) => group === '剧本')
+  const designSections = sections.filter(({ group }) => group !== '剧本')
 
   // 设计期渲染：所有组独立折叠
   if (!isWriting) {
     return (
       <div className={styles.panel}>
-        <div className={styles.panelHeader}>
-          <div className={styles.title}>资产卡片</div>
-        </div>
+        <ExportHeader cards={cards} wordExportAvailable={wordExportAvailable} />
         <div className={styles.body}>
           {sections.map(({ group, cards: sectionCards }) =>
             COLLAPSIBLE_GROUPS.has(group) ? (
@@ -270,7 +340,7 @@ export function AssetCardPanel({
     )
   }
 
-  // 写作期渲染：「大纲设计」父级折叠 + 「剧本正文」独立折叠
+  // 写作期渲染：「大纲设计」父级折叠 + 「剧本」独立折叠
   const designParentExpanded = collapsedSections[PARENT_DESIGN_GROUP] === false
   const allDesignCards = designSections.flatMap(({ cards: c }) => c)
   const designParentStatus = aggregate(allDesignCards)
@@ -278,9 +348,7 @@ export function AssetCardPanel({
 
   return (
     <div className={styles.panel}>
-      <div className={styles.panelHeader}>
-        <div className={styles.title}>资产卡片</div>
-      </div>
+      <ExportHeader cards={cards} wordExportAvailable={wordExportAvailable} />
       <div className={styles.body}>
         {/* 大纲设计 - 父级折叠 */}
         <div className={styles.section}>
@@ -347,7 +415,7 @@ export function AssetCardPanel({
               onSelect={onSelect}
               expanded={collapsedSections[group] === false ? true : collapsedSections[group] === true ? false : undefined}
               onToggle={() => toggleSection(group)}
-              forceCollapse={sectionCards.length > 0} // 写作期「剧本正文」始终套折叠壳
+              forceCollapse={sectionCards.length > 0} // 写作期「剧本」始终套折叠壳
             />
           ) : (
             <div key={group} className={styles.section}>

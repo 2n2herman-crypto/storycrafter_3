@@ -9,3 +9,14 @@ dist
 server/data
 server/dist
 server/node_modules
+
+# 设计文档（内部资料，不上传）
+_design_docs/
+
+# 内部资料，不上传
+AGENTS.md
+test_api.mjs
+
+# 个人本地工具配置，不影响其他人部署使用
+.claude/
+.vscode/

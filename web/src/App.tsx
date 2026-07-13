@@ -15,7 +15,7 @@ import { useUIStore } from './store/uiStore'
 import { usePhaseStore } from './store/phaseStore'
 import { InMemoryFileManager, DEFAULT_ASSET_PATHS } from './orchestrator/fileManager'
 import { HttpFileManager } from './api/assets'
-import { listProjects, createProject, type ProjectMeta } from './api/projects'
+import { listProjects, createProject, deleteProject, type ProjectMeta } from './api/projects'
 import { LLMClient } from './llm/client'
 import { OrchestratorEngine } from './orchestrator/orchestratorEngine'
 import { loadUserSkills } from './skills/skillLoader'
@@ -33,6 +33,8 @@ function App() {
   const initChatStore = useChatStore((s) => s.init)
   const selectedCard = useUIStore((s) => s.selectedCard)
   const setSelectedCard = useUIStore((s) => s.setSelectedCard)
+  const compareMode = useUIStore((s) => s.compareMode)
+  const toggleCompareMode = useUIStore((s) => s.toggleCompareMode)
   const phase = usePhaseStore((s) => s.phase)
   const prevPhaseRef = useRef(phase)
 
@@ -95,6 +97,19 @@ function App() {
     [switchProject],
   )
 
+  // 删除项目：后端硬删 → 从列表移除 → 若删的是当前项目则切到剩余的第一个
+  const handleDeleteProject = useCallback(
+    async (project: ProjectMeta) => {
+      await deleteProject(project.id)
+      const remaining = projects.filter((p) => p.id !== project.id)
+      setProjects(remaining)
+      if (currentProject?.id === project.id && remaining.length > 0) {
+        await switchProject(remaining[0])
+      }
+    },
+    [projects, currentProject, switchProject],
+  )
+
   // v6.4：phase 切换时联动 selectedPath
   useEffect(() => {
     if (prevPhaseRef.current === 'designing' && phase === 'writing') {
@@ -119,38 +134,53 @@ function App() {
     return <SettingsPage onClose={() => setView('main')} />
   }
 
+  // 对照模式：开启时四栏（含版本对比），关闭时三栏（隐藏版本对比栏）
+  const columns = [
+    <BottomPanel />,
+    <AssetCardPanel
+      cards={cardList}
+      selectedPath={selectedCard}
+      onSelect={setSelectedCard}
+      wordExportAvailable={currentProject !== null}
+    />,
+    <CurrentPanel
+      filename={selectedLabel}
+      content={selectedCardData?.content ?? undefined}
+      isLoading={!isReady}
+      selectedPath={selectedCard ?? undefined}
+      compareMode={compareMode}
+      onToggleCompare={toggleCompareMode}
+    />,
+  ]
+  if (compareMode) {
+    columns.push(
+      <BaselinePanel
+        filename={selectedLabel}
+        content={selectedCardData?.previousContent ?? undefined}
+        isLoading={!isReady}
+      />,
+    )
+  }
+  const ratios = compareMode ? [27, 20, 26.5, 26.5] : [30, 22, 48]
+
   return (
     <div className="app-container">
-      <HeaderBar
-        onOpenSettings={() => setView('settings')}
-        projects={projects}
-        currentProject={currentProject}
-        onSwitchProject={switchProject}
-        onCreateProject={handleCreateProject}
-      />
-      <MultiColumnLayout
-        defaultRatios={[27, 20, 26.5, 26.5]}
-        fixedBoundaries={[0]}
-        columns={[
-          <BottomPanel />,
-          <AssetCardPanel
-            cards={cardList}
-            selectedPath={selectedCard}
-            onSelect={setSelectedCard}
-          />,
-          <CurrentPanel
-            filename={selectedLabel}
-            content={selectedCardData?.content ?? undefined}
-            isLoading={!isReady}
-            selectedPath={selectedCard ?? undefined}
-          />,
-          <BaselinePanel
-            filename={selectedLabel}
-            content={selectedCardData?.previousContent ?? undefined}
-            isLoading={!isReady}
-          />,
-        ]}
-      />
+      <div className="sc-container">
+        <HeaderBar
+          onOpenSettings={() => setView('settings')}
+          projects={projects}
+          currentProject={currentProject}
+          onSwitchProject={switchProject}
+          onCreateProject={handleCreateProject}
+          onDeleteProject={handleDeleteProject}
+        />
+        <MultiColumnLayout
+          key={compareMode ? 'compare' : 'plain'}
+          defaultRatios={ratios}
+          fixedBoundaries={[0]}
+          columns={columns}
+        />
+      </div>
     </div>
   )
 }

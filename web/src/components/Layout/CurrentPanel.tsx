@@ -15,6 +15,10 @@ interface CurrentPanelProps {
   isLoading?: boolean
   /** v6.4：当前选中的资产路径，用于判断只读状态 */
   selectedPath?: string
+  /** 对照模式开关状态 */
+  compareMode?: boolean
+  /** 切换对照模式回调 */
+  onToggleCompare?: () => void
   children?: ReactNode
 }
 
@@ -25,6 +29,8 @@ export function CurrentPanel({
   isModified,
   isLoading,
   selectedPath,
+  compareMode,
+  onToggleCompare,
   children,
 }: CurrentPanelProps) {
   const showDiff = !isLoading && content && baselineContent && !children
@@ -62,18 +68,27 @@ export function CurrentPanel({
         )}
         {content && filename && (
           <div className={styles.exportGroup}>
+            {onToggleCompare && (
+              <button
+                className={`${styles.compareBtn} ${compareMode ? styles.compareBtnActive : ''}`}
+                onClick={onToggleCompare}
+                title={compareMode ? '关闭版本对比栏' : '显示上一版本修改记录'}
+              >
+                {compareMode ? '退出对照' : '对照模式'}
+              </button>
+            )}
             <button
               className={styles.exportBtn}
               onClick={() => downloadText(`${filename}.md`, content)}
             >
-              导出 MD
+              导出当前 MD
             </button>
             <button
               className={styles.exportBtn}
               onClick={handleExportWord}
               disabled={exporting}
             >
-              {exporting ? '导出中...' : '导出 Word'}
+              {exporting ? '导出中...' : '导出当前 Word'}
             </button>
           </div>
         )}

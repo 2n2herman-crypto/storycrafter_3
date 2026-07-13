@@ -1,0 +1,128 @@
+/* StageCard（v7.1 改动3，配色对齐设计稿 v8 sc-stage-card 深绛红黑） */
+
+.card {
+  width: 100%;
+  padding: 14px;
+  margin: 6px 0 6px 36px;
+  border: 1px solid #d7cdbc;
+  border-radius: 18px;
+  background: linear-gradient(145deg, #fffaf0, #f4ede1);
+  box-shadow: 0 2px 8px rgba(43, 29, 34, 0.05);
+  box-sizing: border-box;
+}
+
+.title {
+  font-family: 'Noto Serif SC', serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2b1d22;
+  margin-bottom: 4px;
+}
+
+.desc {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #74666b;
+  margin-bottom: 10px;
+}
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.option {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 34px 1fr 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  text-align: left;
+  border: 1px solid #d7cdbc;
+  border-radius: 10px;
+  background: #fbf8f0;
+  color: #2b1d22;
+  cursor: pointer;
+  transition: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  font-family: inherit;
+}
+
+.option:hover:not(:disabled) {
+  border-color: #a47b3e;
+  background: rgba(164, 123, 62, 0.1);
+}
+
+.option.active {
+  border-color: #8b3548;
+  background: rgba(139, 53, 72, 0.08);
+  box-shadow: inset 3px 0 0 #8b3548;
+}
+
+.option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.option.active:disabled {
+  opacity: 1;
+}
+
+.icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #e8e0d2;
+  color: #69545c;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 18px;
+}
+
+.option.active .icon {
+  color: #8b3548;
+  background: rgba(139, 53, 72, 0.08);
+}
+
+.name {
+  display: block;
+  font-family: 'Noto Serif SC', serif;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.copy {
+  display: block;
+  font-size: 10px;
+  line-height: 1.5;
+  color: #74666b;
+}
+
+.check {
+  width: 14px;
+  height: 14px;
+  border: 1px solid #d7cdbc;
+  border-radius: 50%;
+  position: relative;
+}
+
+.option.active .check {
+  border-color: #8b3548;
+  background: #8b3548;
+}
+
+.option.active .check::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 1px;
+  width: 4px;
+  height: 7px;
+  border: solid #fff;
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}

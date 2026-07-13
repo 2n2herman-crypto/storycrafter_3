@@ -26,13 +26,13 @@ const ASSET_META = buildAssetMeta()
 // ===== 文件名 → 中文展示名 映射 =====
 
 const FILE_LABELS: Record<string, string> = {
-  'worldbuilding.md': '世界观设定',
-  'characters.md': '角色设定',
-  'act_map.md': '幕结构设计',
+  'worldbuilding.md': '世界观',
+  'characters.md': '角色',
+  'act_map.md': '幕结构',
   'sequence_list.md': '序列清单',
-  'foreshadowing.md': '伏笔与信息披露',
-  'subplots.md': '支线管理',
-  'user_requirements.md': '用户需求',
+  'foreshadowing.md': '伏笔',
+  'subplots.md': '支线',
+  'user_requirements.md': '需求清单',
 }
 
 // ===== 内部状态 =====
@@ -51,24 +51,24 @@ interface AssetState {
 /**
  * v6.3: 文件名 → 展示标签的解析规则
  * - 先查静态 FILE_LABELS
- * - sequences/S1-1.md → "序列 S1-1"
- * - chapters/S1-1.md → "章节 S1-1"
+ * - sequences/S1-1.md → "场记 S1-1"（v7.1）
+ * - chapters/S1-1.md → "正文 S1-1"（v7.1）
  * - chapters/E01-E12.md → "第1-12集"（v6.9 短剧）/ chapters/E05.md → "第5集"（v6.9 长剧）
  * - 其余回退到去 .md 后缀
  */
 function computeLabel(path: string): string {
   if (FILE_LABELS[path]) return FILE_LABELS[path]
   const seqMatch = path.match(/^sequences\/(.+)\.md$/)
-  if (seqMatch) return `序列 ${seqMatch[1]}`
+  if (seqMatch) return `场记 ${seqMatch[1]}`
   const chMatch = path.match(/^chapters\/(.+)\.md$/)
   if (chMatch) {
     const name = chMatch[1]
-    // v6.9：短剧 E01-E12 → "第1-12集"，长剧 E05 → "第5集"，其余 chapters/<seqId>.md → "章节 <seqId>"
+    // v6.9：短剧 E01-E12 → "第1-12集"，长剧 E05 → "第5集"，其余 chapters/<seqId>.md → "正文 <seqId>"
     const range = name.match(/^E(\d+)-E(\d+)$/)
     if (range) return `第${Number(range[1])}-${Number(range[2])}集`
     const single = name.match(/^E(\d+)$/)
     if (single) return `第${Number(single[1])}集`
-    return `章节 ${name}`
+    return `正文 ${name}`
   }
   return path.replace(/\.md$/, '')
 }
@@ -235,9 +235,9 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
       const meta = ASSET_META[path]
       const fallbackGroup =
         path.startsWith('sequences/')
-          ? '大纲切片'
+          ? '细纲'
           : path.startsWith('chapters/')
-            ? '剧本正文'
+            ? '剧本'
             : ''
       return {
         path,

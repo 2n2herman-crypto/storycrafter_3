@@ -10,18 +10,46 @@
 .panelHeader {
   display: flex;
   align-items: center;
-  height: 40px;
-  padding: 0 16px;
-  background: var(--color-panel-header);
+  justify-content: space-between;
+  height: 44px;
+  padding: 0 12px;
+  background: transparent;
   border-bottom: 1px solid var(--color-border);
   flex-shrink: 0;
   user-select: none;
 }
 
 .title {
+  font-family: var(--font-display);
   font-size: 13px;
   font-weight: 600;
   color: var(--color-text-primary);
+  letter-spacing: 0.06em;
+}
+
+/* v7.1 改动5：全量导出按钮组 */
+.exportGroup {
+  display: flex;
+  gap: 6px;
+}
+
+.exportBtn {
+  padding: 2px 8px;
+  font-size: 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.exportBtn:hover:not(:disabled) {
+  background: var(--color-bg-tertiary, rgba(0, 0, 0, 0.04));
+}
+
+.exportBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .body {
@@ -72,9 +100,11 @@
 }
 
 .groupTitle {
-  font-size: 13px;
+  font-family: var(--font-display);
+  font-size: 12px;
   font-weight: 600;
-  color: var(--color-text-primary);
+  color: var(--color-text-secondary);
+  letter-spacing: 0.14em;
 }
 
 .groupCount {

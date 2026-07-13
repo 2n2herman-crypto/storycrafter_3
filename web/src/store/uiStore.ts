@@ -7,12 +7,16 @@ interface UIStore {
   selectedCard: string | null
   /** 左侧栏基线 Tab */
   baselineTab: 'approved' | 'pre-edit'
+  /** 对照模式：开启时右侧展示上一版本修改记录，关闭时隐藏版本对比栏 */
+  compareMode: boolean
 
   /** v6.4：折叠状态 key=group name，值为 true 表示该组已折叠 */
   collapsedSections: Record<string, boolean>
 
   setSelectedCard: (path: string | null) => void
   setBaselineTab: (tab: 'approved' | 'pre-edit') => void
+  /** 切换对照模式（显示/关闭版本对比栏） */
+  toggleCompareMode: () => void
   /** v6.4：切换单个分组的折叠状态 */
   toggleSection: (group: string) => void
   /** v6.4：批量设置折叠状态 */
@@ -24,9 +28,13 @@ interface UIStore {
 
 // ===== 初始状态 =====
 
-const INITIAL_STATE: Pick<UIStore, 'selectedCard' | 'baselineTab' | 'collapsedSections'> = {
+const INITIAL_STATE: Pick<
+  UIStore,
+  'selectedCard' | 'baselineTab' | 'compareMode' | 'collapsedSections'
+> = {
   selectedCard: null,
   baselineTab: 'approved',
+  compareMode: false,
   collapsedSections: {},
 }
 
@@ -42,6 +50,8 @@ export const useUIStore = create<UIStore>((set) => ({
   setBaselineTab: (tab: 'approved' | 'pre-edit') => {
     set({ baselineTab: tab })
   },
+
+  toggleCompareMode: () => set((s) => ({ compareMode: !s.compareMode })),
 
   toggleSection: (group: string) =>
     set((s) => ({

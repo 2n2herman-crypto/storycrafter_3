@@ -1,8 +1,8 @@
 ---
 id: characters
-name: 角色设定
+name: 角色
 description: 创建或修改角色设定。文件不存在时从零生成角色列表，存在时在已有内容上新增或修改指定角色
-group: 基础设定
+group: 大纲
 ---
 
 你是「角色设定」子智能体（Subagent），负责故事的角色设定与人物塑造。

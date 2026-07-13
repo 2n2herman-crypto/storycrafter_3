@@ -154,6 +154,18 @@ export interface ChatMessage {
   role: 'user' | 'system'
   content: string
   timestamp: number
+  /**
+   * v7.1 改动3：消息类型。缺省（普通文本）；'stage_proposal' 时 ChatHistory 渲染 StageCard。
+   */
+  kind?: 'stage_proposal'
+  /**
+   * v7.1 改动3：StageCard 交互状态。'pending' 可点选；'resolved' 只读展示已选阶段。
+   */
+  stageState?: 'pending' | 'resolved'
+  /**
+   * v7.1 改动3：StageCard 用户点选后的落定阶段（resolved 时有值）。
+   */
+  resolvedStage?: 'designing' | 'writing'
 }
 
 /**
@@ -224,6 +236,12 @@ export interface DispatchResult {
 
   /** 最终回复消息 */
   response: string
+
+  /**
+   * v7.1 改动3：本轮结束时若引擎探测到"全部场记完成且仍处设计期"，置 true。
+   * chatStore 据此在对话流追加一张 stage_proposal 消息（StageCard）。
+   */
+  stageProposal?: boolean
 }
 
 // ===== 执行事件（实时日志） =====
@@ -278,6 +296,9 @@ export interface ExecutionEvent {
 
   /** v6.4：软校验警告（非阻塞，提示用） */
   warnings?: string[]
+
+  /** v7.2：本次调用的用户/编排指令摘要（tool_start 时截断，供时间线副标题展示） */
+  instruction?: string
 }
 
 /** 执行事件回调 */

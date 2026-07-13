@@ -1,10 +1,11 @@
 .resizer {
-  width: 12px;
+  width: 5px;
   cursor: col-resize;
   background: transparent;
   flex-shrink: 0;
   position: relative;
   z-index: 10;
+  margin: 0 -2px;
 }
 
 /* hover/拖拽时中间浮现一条细色线 */

@@ -1,7 +1,7 @@
 .container {
   flex: 1;
   overflow-y: auto;
-  padding: 8px 16px;
+  padding: 12px;
 }
 
 .empty {
@@ -16,132 +16,118 @@
 
 .message {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  gap: 4px;
   padding: 6px 0;
+}
+
+/* 系统/Agent 消息左对齐，用户消息右对齐 */
+.message.user {
+  align-items: flex-end;
+}
+
+.message.system {
+  align-items: flex-start;
 }
 
 .tag {
   font-size: 11px;
   font-weight: 600;
   flex-shrink: 0;
-  min-width: 28px;
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: 999px;
   text-align: center;
   height: fit-content;
 }
 
 .tagUser {
   color: var(--color-accent);
-  background: rgba(74, 90, 168, 0.12);
+  background: rgba(139, 53, 72, 0.12);
 }
 
 .tagSystem {
   color: var(--color-success);
-  background: rgba(64, 192, 87, 0.1);
+  background: rgba(79, 138, 91, 0.12);
 }
 
 .tagAgent {
   color: var(--color-brown);
-  background: rgba(165, 73, 60, 0.1);
+  background: rgba(164, 123, 62, 0.12);
 }
 
 .content {
-  flex: 1;
   min-width: 0;
+  max-width: 88%;
+  display: flex;
+  flex-direction: column;
+}
+
+.message.user .content {
+  align-items: flex-end;
 }
 
 .text {
+  /* 气泡宽度随内容收缩，不再撑满整栏 */
+  display: inline-block;
+  width: fit-content;
+  max-width: 100%;
   font-size: 12px;
-  line-height: 1.5;
+  line-height: 1.7;
   color: var(--color-text-secondary);
   white-space: pre-wrap;
   word-break: break-word;
+  padding: 10px 12px;
+  background: #f1ebdf;
+  border: 1px solid var(--color-border);
+  border-radius: 5px 14px 14px 14px;
+  box-shadow: var(--shadow-panel);
+}
+
+/* 用户气泡：绛红软底，尾角在右下 */
+.message.user .text {
+  background: var(--color-accent-soft);
+  border-color: rgba(139, 53, 72, 0.22);
+  color: var(--color-text-primary);
+  border-radius: 14px 5px 14px 14px;
 }
 
 .time {
   font-size: 10px;
   color: var(--color-text-muted);
-  margin-top: 2px;
+  margin-top: 4px;
   display: inline-block;
 }
 
-/* ===== 执行日志区块 ===== */
+/* ===== v7.1 改动4：处理中呼吸灯 + 成功提示 ===== */
 
-.logBlock {
-  margin: 4px 0 4px 36px;
-  padding: 6px 10px;
-  background: var(--color-bg-tertiary);
-  border-left: 2px solid var(--color-warning);
-  border-radius: 4px;
-  font-size: 11px;
-  line-height: 1.6;
-}
-
-.logSummary {
+.processing {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 0;
-  cursor: pointer;
-  color: var(--color-text-secondary);
+  gap: 8px;
+  margin: 6px 0 6px 36px;
+  font-size: 11px;
+  color: var(--color-text-muted);
   user-select: none;
 }
 
-.logSummary:hover {
-  color: var(--color-text-primary);
+.typingDots {
+  display: inline-flex;
+  gap: 3px;
 }
 
-.logExpandIcon {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  transition: transform 0.15s;
+.typingDots span {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-accent);
+  animation: scTyping 1.2s infinite ease-in-out;
 }
 
-.logExpandIconOpen {
-  transform: rotate(90deg);
+.typingDots span:nth-child(2) { animation-delay: 0.2s; }
+.typingDots span:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes scTyping {
+  0%, 60%, 100% { opacity: 0.25; transform: translateY(0); }
+  30% { opacity: 1; transform: translateY(-2px); }
 }
 
-.logEntry {
-  display: flex;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 1px 0;
-  color: var(--color-text-muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-}
-
-.logEntryThinking {
-  color: var(--color-accent);
-}
-
-.logEntryToolStart {
-  color: var(--color-text-secondary);
-}
-
-.logEntryToolRetry {
-  color: var(--color-warning);
-}
-
-.logEntryToolComplete {
-  color: var(--color-success);
-}
-
-.logEntryToolError {
-  color: var(--color-danger);
-}
-
-.logEntryEngineComplete {
-  color: var(--color-success);
-}
-
-.logEntryEngineError {
-  color: var(--color-danger);
-}
-
-.logIcon {
-  flex-shrink: 0;
-  width: 16px;
-  text-align: center;
-}

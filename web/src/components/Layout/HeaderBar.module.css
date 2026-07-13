@@ -4,12 +4,14 @@
   justify-content: space-between;
   height: var(--header-height);
   padding: 0 18px;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-panel);
-  box-shadow: var(--shadow-panel);
+  /* v8 深绛暗色 topbar，贴合纸卡顶部（仅上圆角） */
+  background: #251116;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 19px 19px 0 0;
+  box-shadow: 0 5px 20px rgba(37, 17, 22, 0.18);
   flex-shrink: 0;
   user-select: none;
+  color: #f7f1e5;
 }
 
 .brand {
@@ -18,187 +20,62 @@
   gap: 10px;
 }
 
-/* 现代主义几何色块标识 */
-.mark {
-  display: grid;
-  grid-template-columns: 9px 9px;
-  grid-template-rows: 9px 9px;
-  gap: 2px;
+/* v8 品牌圆点（金） */
+.brandDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #c89e58;
+  box-shadow: 0 0 0 3px rgba(200, 158, 88, 0.15);
+  flex-shrink: 0;
 }
-
-.mark span {
-  border-radius: 2px;
-}
-
-.mark span:nth-child(1) { background: var(--color-accent); }
-.mark span:nth-child(2) { background: var(--color-brown); }
-.mark span:nth-child(3) { background: var(--color-warning); }
-.mark span:nth-child(4) { background: var(--color-success); }
 
 .logo {
-  font-size: 16px;
-  font-weight: 800;
-  color: var(--color-text-primary);
-  letter-spacing: 0;
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 700;
+  color: #fbf5e9;
+  letter-spacing: 0.08em;
 }
 
-.version {
+/* v8 副标：Cormorant 衬线小字 */
+.brandSub {
+  font-family: 'Cormorant Garamond', serif;
   font-size: 11px;
-  color: var(--color-text-muted);
-  font-weight: 400;
-  margin-left: 8px;
+  letter-spacing: 0.18em;
+  color: #cdbb94;
+  margin-left: 2px;
 }
 
-/* v6.4：操作区容器 */
+/* 操作区容器 */
 .actions {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-/* v6.4：Phase Gate 按钮 */
-.phaseBtn {
-  padding: 5px 14px;
+/* 设置入口图标按钮 */
+.iconBtn {
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  line-height: 1;
+  border: 1px solid rgba(247, 241, 229, 0.22);
   border-radius: var(--radius-control);
-  cursor: pointer;
-  font-size: 13px;
-  transition:
-    background-color 160ms ease-out,
-    border-color 160ms ease-out,
-    color 160ms ease-out;
-}
-
-.phaseBtnUnlocked {
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
-}
-
-.phaseBtnUnlocked:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
-  border-color: var(--color-border-strong);
-}
-
-.phaseBtnLocked {
-  background: rgba(74, 90, 168, 0.1);
-  border: 1px solid rgba(74, 90, 168, 0.3);
-  color: var(--color-accent);
-}
-
-.phaseBtnLocked:hover {
-  background: rgba(74, 90, 168, 0.18);
-  border-color: rgba(74, 90, 168, 0.45);
-}
-
-/* v6.4：进度概览 */
-.progressBadge {
-  position: relative;
-  font-size: 12px;
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  padding: 4px 8px;
-  border-radius: 4px;
-  transition: background-color 160ms ease-out;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.progressBadge:hover {
-  background: var(--color-bg-hover);
-}
-
-.progressArrow {
-  font-size: 10px;
-  color: var(--color-text-muted);
-}
-
-.progressPanel {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 6px;
-  background: var(--color-bg-secondary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-panel);
-  padding: 8px 12px;
-  min-width: 200px;
-  z-index: 100;
-}
-
-.progressRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 3px 0;
-  font-size: 12px;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.progressRow:last-child {
-  border-bottom: none;
-}
-
-.progressSeq {
-  font-weight: 500;
-  color: var(--color-text-primary);
-}
-
-.progressStatus {
-  color: var(--color-text-muted);
-}
-
-.progressEmpty {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  padding: 4px 0;
-  text-align: center;
-}
-
-/* v6.6：产品方向选择器 */
-.productSelector {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px;
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-control);
-}
-
-.productBtn {
-  padding: 4px 10px;
-  border: none;
   background: transparent;
-  color: var(--color-text-secondary);
-  font-size: 12px;
-  border-radius: calc(var(--radius-control) - 2px);
+  color: rgba(247, 241, 229, 0.8);
   cursor: pointer;
   transition:
     background-color 160ms ease-out,
     color 160ms ease-out;
 }
 
-.productBtn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
-}
-
-.productBadge {
-  padding: 4px 12px;
-  background: rgba(74, 90, 168, 0.12);
-  border: 1px solid rgba(74, 90, 168, 0.3);
-  color: var(--color-accent);
-  font-size: 12px;
-  font-weight: 600;
-  border-radius: var(--radius-control);
-}
-
-.productHint {
-  font-size: 12px;
-  color: var(--color-warning);
+.iconBtn:hover {
+  background: rgba(247, 241, 229, 0.12);
+  color: #f7f1e5;
 }
 
 /* v7.1 M4：多项目选择器 */
@@ -213,16 +90,20 @@
   height: 26px;
   padding: 0 8px;
   font-size: 12px;
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(247, 241, 229, 0.22);
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--color-text-primary);
+  color: #f7f1e5;
   cursor: pointer;
   max-width: 160px;
 }
 
 .projectSelect:hover {
-  background: var(--color-bg-hover);
+  background: rgba(247, 241, 229, 0.12);
+}
+
+.projectSelect option {
+  color: #2b1d22;
 }
 
 .newProjectBtn {
@@ -233,14 +114,40 @@
   justify-content: center;
   font-size: 16px;
   line-height: 1;
-  border: 1px solid var(--color-border);
+  border: 1px solid rgba(247, 241, 229, 0.22);
   border-radius: var(--radius-control);
   background: transparent;
-  color: var(--color-text-secondary);
+  color: rgba(247, 241, 229, 0.8);
   cursor: pointer;
 }
 
 .newProjectBtn:hover {
-  background: var(--color-bg-hover);
-  color: var(--color-text-primary);
+  background: rgba(247, 241, 229, 0.12);
+  color: #f7f1e5;
+}
+
+.deleteProjectBtn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-weight: 300;
+  line-height: 1;
+  border: 1px solid rgba(247, 241, 229, 0.22);
+  border-radius: var(--radius-control);
+  background: transparent;
+  color: rgba(247, 241, 229, 0.55);
+  cursor: pointer;
+  transition:
+    background-color 160ms ease-out,
+    color 160ms ease-out,
+    border-color 160ms ease-out;
+}
+
+.deleteProjectBtn:hover {
+  background: var(--color-accent-soft);
+  border-color: rgba(139, 53, 72, 0.55);
+  color: #e8b9c2;
 }
