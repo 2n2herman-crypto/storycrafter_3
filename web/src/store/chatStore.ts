@@ -11,7 +11,9 @@ import { updateProject } from '../api/projects'
 // ===== 常量 =====
 
 /** 回传给引擎的对话窗口大小（最近 N 条消息，v5.5 跨轮需求记忆） */
-const HISTORY_WINDOW = 6
+const HISTORY_WINDOW = 24
+/** 对话历史字符预算：在扩大轮数的同时避免超长回复挤爆模型上下文 */
+const HISTORY_CHAR_BUDGET = 16_000
 
 // ===== Store 类型 =====
 
@@ -135,12 +137,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (isProcessing || !_engine) return
 
     // ② 采集对话窗口（推入本次 userMsg 之前，避免重复；system → assistant 映射）
-    const history: ConversationTurn[] = get()
-      .messages.slice(-HISTORY_WINDOW)
-      .map((m) => ({
+    const recentMessages = get().messages.slice(-HISTORY_WINDOW)
+    let historyChars = 0
+    const history: ConversationTurn[] = []
+    for (let i = recentMessages.length - 1; i >= 0; i--) {
+      const m = recentMessages[i]
+      const nextChars = historyChars + m.content.length
+      // 始终保留最近一条；更早的消息按字符预算整条淘汰，避免截断语义。
+      if (history.length > 0 && nextChars > HISTORY_CHAR_BUDGET) break
+      history.unshift({
         role: m.role === 'system' ? 'assistant' : 'user',
         content: m.content,
-      }))
+      })
+      historyChars = nextChars
+    }
 
     // ③ 添加用户消息，重置执行日志
     const userMsg = createUserMessage(content)
