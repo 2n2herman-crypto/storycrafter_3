@@ -15,6 +15,7 @@ import orchestratorPromptRaw from '../llm/prompts/orchestrator_v5.md?raw'
 import { runAgentLoop, SUBAGENT_LOOP_MAX_ROUNDS, SAFETY_MAX_ROUNDS } from './agentLoop'
 import { READ_FILE_TOOL, READ_REFERENCE_TOOL } from './readTools'
 import { auditStructure, type StructuralIssue } from '../skills/checker/structuralAudit'
+import { buildProjectStatusSnapshot, isProjectStatusQuery } from './projectStatus'
 
 type ChatCompletionMessageParam = OpenAI.Chat.Completions.ChatCompletionMessageParam
 
@@ -1870,8 +1871,27 @@ export class OrchestratorEngine {
     history: ConversationTurn[] = [],
     onEvent?: ExecutionEventCallback,
   ): Promise<DispatchResult> {
-    // ① 计算可用 Subagent（v5：全部始终可见）
     this.onEvent = onEvent
+
+    // v7.4：每轮先从 FileManager 机械扫描项目状态。
+    // 纯进度查询直接返回确定性表格，不再让 LLM 根据历史消息猜测；
+    // 其余请求则把同一快照注入 Orchestrator system prompt。
+    const projectStatus = await buildProjectStatusSnapshot(
+      this.fileManager,
+      this.profileLock,
+      usePhaseStore.getState().phase,
+    )
+    if (isProjectStatusQuery(userInput)) {
+      this.emit('engine_complete', { message: '已从项目资产实时读取当前进度' })
+      return {
+        success: true,
+        results: [],
+        response: projectStatus.markdown,
+        stageProposal: await this.probeAllScenesReady(),
+      }
+    }
+
+    // ① 计算可用 Subagent（v5：全部始终可见）
     const availableSubagents = getAvailableSubagents()
 
     // ===== v6.6 Guard-0/1：产品锁 + Phase Gate 双重可见性过滤（FC 面）=====
@@ -1909,7 +1929,7 @@ export class OrchestratorEngine {
     const toolSpecs = visibleSubagents.map(buildFunctionSpec)
 
     // ② 加载 System Prompt（注入工具列表）
-    let systemPrompt = loadOrchestratorPrompt(toolSpecs)
+    const systemPrompt = `${loadOrchestratorPrompt(toolSpecs)}\n\n## 当前项目权威状态\n\n${projectStatus.promptBlock}`
 
     // ②.4 v6.6 前置归一化：检测到未归一化的 _input_raw.md 时，强制先跑 input_normalizer，
     //      再允许需求合并——否则整篇原文会被 user_requirements_analyzer 当"需求"吞掉。
