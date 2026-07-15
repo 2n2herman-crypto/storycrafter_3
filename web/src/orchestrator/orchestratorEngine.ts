@@ -2,43 +2,39 @@ import type OpenAI from 'openai'
 import type { SubagentSpec, SkillSpec, ToolResult, DispatchResult, SchedulerState, ExecutionEvent, ExecutionEventCallback, ConversationTurn, AssetFileInfo } from '../types'
 import type { ProductProfile, ProductKind } from '../types/product'
 import { PRODUCT_PROFILES, WRITER_IDS, renderProductProfileXml } from '../types/product'
-import { getSubagent, getAvailableSubagents, buildFunctionSpec, getSkills } from '../skills/skillLoader'
+import { getSubagent, getAvailableSubagents, buildFunctionSpec, getSkills, REFERENCE_CONTENTS } from '../skills/skillLoader'
 import { selectSkill } from './skillRouter'
-import { assembleContext, buildAgentPrompt } from './contextAssembler'
+import { assembleContext, buildAgentPrompt, wrapFileAsXml } from './contextAssembler'
 import { validateOutput, extractMultiFileOutput } from './outputValidator'
-import { checkSceneTable, checkBeatBlocks, extractSceneIds, countBeatBlocks } from '../skills/scene_beats/structuralChecks'
 import type { LLMClient } from '../llm/client'
 import type { FileManager } from './fileManager'
 import { usePhaseStore } from '../store/phaseStore'
+import { useSelfCheckStore } from '../store/selfCheckStore'
 import { classifyLLMError } from '../utils/llmError'
 import orchestratorPromptRaw from '../llm/prompts/orchestrator_v5.md?raw'
+import { runAgentLoop, SUBAGENT_LOOP_MAX_ROUNDS, SAFETY_MAX_ROUNDS } from './agentLoop'
+import { READ_FILE_TOOL, READ_REFERENCE_TOOL } from './readTools'
+import { auditStructure, type StructuralIssue } from '../skills/checker/structuralAudit'
 
 type ChatCompletionMessageParam = OpenAI.Chat.Completions.ChatCompletionMessageParam
 
 // ===== 常量 =====
 
-const MAX_ROUNDS = 10
 const MAX_RETRIES = 3
 const MAX_TOOLS_PER_ROUND = 5
 const CONTEXT_LIMIT_CHARS = 22_000 // deepseek-v4-flash 32K 的 ~70%
 
-/** v6.8 全序列并行并发池上限。DeepSeek API 并发上限 500，取 50（10 倍余量防突发）。 */
-const PIPELINE_CONCURRENCY = 50
+/** v7.3：统一并发池上限（构筑/写作 subagent 批量调度共用） */
+const BATCH_CONCURRENCY = 50
 
-/** v6.9 全序列写作并发池上限（同 PIPELINE_CONCURRENCY 依据） */
-const WRITER_CONCURRENCY = 50
-
-/** 创作 Subagent ID 列表（用于后处理判断是否需要更新需求状态） */
+/** 创作 Subagent ID 列表（用于后处理判断是否需要更新需求状态，以及设计期/写作期可见性管控） */
 const CREATIVE_TOOL_IDS = [
   'worldbuilding', 'characters', 'act_map', 'sequence_list',
-  'scene_beats', 'foreshadowing_tracker', 'subplot_manager',
+  'sequence_builder', 'foreshadowing_tracker', 'subplot_manager',
 ]
 
-/** v6.8 审计修复轮受保护的上游设定 Subagent ID（Guard-3a 拦截目标，不含 scene_beats） */
-const UPSTREAM_DESIGN_IDS = [
-  'worldbuilding', 'characters', 'act_map', 'sequence_list',
-  'foreshadowing_tracker', 'subplot_manager',
-]
+/** v7.3：宽泛 subagent ID 列表（走独立隔离上下文执行路径） */
+const ISOLATED_SUBAGENT_IDS = ['quality_checker', 'sequence_builder', 'prose_writer']
 
 /**
  * v6.6 短剧镜头分解规范（仅 short_drama writer 注入为 <shot_breakdown_spec>）。
@@ -144,6 +140,15 @@ async function safeRead(fm: FileManager, path: string): Promise<string> {
     return ''
   }
 }
+
+// ===== v6.2 结构化校验桩函数（原 structuralChecks.ts 已随 scene_beats 删除，留存桩体保证旧 Pipeline 代码编译通过） =====
+// 这些函数仅被旧 runSequencePipeline/runPipelineSoftValidation 引用，
+// 旧 pipeline 代码将在后续彻底清理阶段一并删除。
+
+function checkSceneTable(_md: string): string | null { return null }
+function extractSceneIds(_md: string): Set<string> { return new Set() }
+function checkBeatBlocks(_md: string, _sc: string): string | null { return null }
+function countBeatBlocks(_md: string): number { return 0 }
 
 // ===== v6.7 Scene Beats 三段式流水线注册表（PIPELINE_REGISTRY）=====
 //
@@ -400,11 +405,6 @@ export class OrchestratorEngine {
    */
   private profileLock: ProductProfile | null = null
 
-  /** v6.8 审计修复状态：story_checker 报 FAIL 时置 true，PASS/WARNING 或漏标置 false */
-  private auditFixMode = false
-  /** v6.8 审计范围：checker 标 sequence_only 时设，否则 null（漏标默认放行上游） */
-  private auditScope: 'sequence_only' | null = null
-
   constructor(llm: LLMClient, fileManager: FileManager) {
     this.llm = llm
     this.fileManager = fileManager
@@ -485,7 +485,8 @@ export class OrchestratorEngine {
   ): Promise<ToolResult> {
     // ===== v6.6 Guard 体系（FC 面 Guard-0/1 已裁剪，此处双保险兜底）=====
     //  - Guard-0：未选产品(profileLock=null)时除 reset_all 外全拦
-    //  - Guard-2：写作期屏蔽设计区 + story_checker + 非本产品 writer；设计期屏蔽全部 writer
+    //  - Guard-2：写作期屏蔽设计区（含构筑 subagent）；设计期屏蔽写作 subagent
+    //  - v7.3：quality_checker 不受阶段限制，只受 selfCheckStore 开关约束（下方独立判断）
     const psGuard = usePhaseStore.getState()
     if (this.profileLock === null && subagent.id !== 'reset_all') {
       this.emit('tool_error', {
@@ -499,16 +500,20 @@ export class OrchestratorEngine {
         skillName: subagent.name,
       }
     }
+    if (subagent.id === 'quality_checker' && !useSelfCheckStore.getState().selfCheckEnabled) {
+      this.emit('tool_error', {
+        toolId: subagent.id,
+        toolName: subagent.name,
+        message: `${subagent.name} 当前已被自检模式开关关闭`,
+      })
+      return {
+        success: false,
+        error: `${subagent.name} 已被自检模式开关关闭，请引导用户先开启自检模式`,
+        skillName: subagent.name,
+      }
+    }
     if (psGuard.isWriting()) {
-      const isOtherWriter =
-        this.profileLock != null &&
-        WRITER_IDS.includes(subagent.id) &&
-        subagent.id !== this.profileLock.writerSubagentId
-      if (
-        CREATIVE_TOOL_IDS.includes(subagent.id) ||
-        subagent.id === 'story_checker' ||
-        isOtherWriter
-      ) {
+      if (CREATIVE_TOOL_IDS.includes(subagent.id)) {
         this.emit('tool_error', {
           toolId: subagent.id,
           toolName: subagent.name,
@@ -535,36 +540,41 @@ export class OrchestratorEngine {
 
     const target = options?.target?.trim() ?? ''
 
-    // ===== v6.8 Guard-3a：审计修复轮仅序列级问题时，拦截上游设定工具（dispatch 兜底）=====
-    if (this.auditFixMode && this.auditScope === 'sequence_only' && UPSTREAM_DESIGN_IDS.includes(subagent.id)) {
-      this.emit('tool_error', {
-        toolId: subagent.id,
-        toolName: subagent.name,
-        message: `${subagent.name} 受审计修复约束：本轮仅序列级问题，不得修改上游设定文件`,
-      })
-      return {
-        success: false,
-        skillName: subagent.name,
-        error: '审计修复轮仅序列级问题，不得修改上游指导文件（worldbuilding/characters/act_map/sequence_list/foreshadowing/subplots）',
+    // ===== v7.3 宽泛 subagent 分流：独立隔离上下文执行 =====
+    // quality_checker 不带 target 语义（检查粒度由 instruction 自然语言指定，非按序列批量），
+    // 始终走单次隔离执行；sequence_builder/prose_writer 沿用 target 协议：
+    // 空 target = 批量并发全部序列，带 target = 精修单序列。
+    if (ISOLATED_SUBAGENT_IDS.includes(subagent.id)) {
+      if (subagent.id !== 'quality_checker' && !target) {
+        const seqListMd = await safeRead(this.fileManager, 'sequence_list.md')
+        const seqIds = this.parseSequenceIds(seqListMd)
+        if (seqIds.length === 0) {
+          return {
+            success: false,
+            error: '未能从 sequence_list.md 解析出任何序列 ID，请先生成序列清单',
+            skillName: subagent.name,
+          }
+        }
+        return this.runBatchWithSubagent(subagent, instruction, seqIds)
       }
+      if (target && !TARGET_ID_REGEX.test(target)) {
+        this.emit('tool_error', {
+          toolId: subagent.id,
+          toolName: subagent.name,
+          message: `${subagent.name} 的目标序列格式非法（形如 S1-1）；留空=全量批量，填写=精修单序列`,
+        })
+        return {
+          success: false,
+          error: `目标序列格式非法：${target}`,
+          skillName: subagent.name,
+        }
+      }
+      return this.runSubagentWithIsolatedContext(subagent, instruction, target ? normalizeToSequenceId(target) : undefined)
     }
 
     // ===== v6.7 Pipeline Registry 分流（scene_beats 三段式：空靶批量 / 带靶精修）=====
     const pipeReg = PIPELINE_REGISTRY[subagent.id]
     if (pipeReg !== undefined) {
-      // ===== v6.8 Guard-3b：审计修复轮 scene_beats 必须带靶，禁止空靶全量覆写 =====
-      if (this.auditFixMode && subagent.id === 'scene_beats' && !target) {
-        this.emit('tool_error', {
-          toolId: subagent.id,
-          toolName: subagent.name,
-          message: '审计修复轮禁止空靶全量覆写，必须带 target_sequence 精修出错序列',
-        })
-        return {
-          success: false,
-          skillName: subagent.name,
-          error: '审计修复轮必须带 target_sequence 精修单序列，禁止空靶全量覆写',
-        }
-      }
       if (!target) {
         // 空靶 = 全量批量（v6.8 并发池）
         return this.runBatchPipeline(subagent, pipeReg, instruction, history)
@@ -1080,11 +1090,11 @@ export class OrchestratorEngine {
     this.emit('tool_start', {
       toolId: subagent.id,
       toolName: subagent.name,
-      message: `并发批量铺设 ${seqIds.length} 个序列（并发 ${PIPELINE_CONCURRENCY}）`,
+      message: `并发批量铺设 ${seqIds.length} 个序列（并发 ${BATCH_CONCURRENCY}）`,
     })
 
     // v6.8 并发池（偏差③闭合：串行 for → runWithConcurrency），汇总逻辑按下标对齐不变
-    const results = await this.runWithConcurrency(seqIds, PIPELINE_CONCURRENCY,
+    const results = await this.runWithConcurrency(seqIds, BATCH_CONCURRENCY,
       (seqId) => this.runSequencePipeline(subagent, pipe, seqId, instruction, history))
 
     // 汇总
@@ -1506,10 +1516,10 @@ export class OrchestratorEngine {
 
     this.emit('tool_start', {
       toolId: subagent.id, toolName: subagent.name,
-      message: `并发批量写作 ${seqIds.length} 个序列（并发 ${WRITER_CONCURRENCY}）`,
+      message: `并发批量写作 ${seqIds.length} 个序列（并发 ${BATCH_CONCURRENCY}）`,
     })
 
-    const results = await this.runWithConcurrency(seqIds, WRITER_CONCURRENCY,
+    const results = await this.runWithConcurrency(seqIds, BATCH_CONCURRENCY,
       (seqId) => this.runWriterSequencePipeline(subagent, seqId, instruction, history, episodeRange))
 
     // 汇总（下标对齐，不依赖完成顺序）
@@ -1535,6 +1545,312 @@ export class OrchestratorEngine {
     }
   }
 
+  // ===== v7.3 宽泛 subagent 独立上下文执行 =====
+
+  /**
+   * v7.3：执行宽泛 subagent 专属上下文中的 read_file / read_reference 工具调用。
+   *
+   * read_file 通过 FileManager 读取任意已知资产文件并用 wrapFileAsXml 格式化返回；
+   * read_reference 从 skillLoader 的 REFERENCE_CONTENTS 查表中按 subagentId/skillId/name 查找。
+   */
+  private async executeReadToolCall(
+    toolCall: { id: string; type: 'function'; function: { name: string; arguments: string } },
+    subagentId: string,
+    preloadedSkills: SkillSpec[],
+  ): Promise<string> {
+    const args = JSON.parse(toolCall.function.arguments)
+    if (toolCall.function.name === 'read_file') {
+      const content = await safeRead(this.fileManager, args.path)
+      return wrapFileAsXml(args.path, content)
+    }
+    if (toolCall.function.name === 'read_reference') {
+      // 按当前 subagent 预装 skill 的 references 列表查找
+      // 先在预装 skill 中找声明了该 reference 的那个 skill
+      for (const skill of preloadedSkills) {
+        if (skill.references?.includes(args.name)) {
+          const key = `${subagentId}/${skill.skillId}/${args.name}`
+          const content = REFERENCE_CONTENTS.get(key)
+          if (content) return content
+        }
+      }
+      // 备选：不限定 skillId，直接扫描当前 subagent 下所有 skill
+      const skills = getSkills(subagentId)
+      for (const skill of skills) {
+        const key = `${subagentId}/${skill.skillId}/${args.name}`
+        const content = REFERENCE_CONTENTS.get(key)
+        if (content) return content
+      }
+      return `未找到参考文件: ${args.name}`
+    }
+    throw new Error(`未知工具: ${toolCall.function.name}`)
+  }
+
+  /**
+   * v7.3：质检 subagent 结构合法性维度的第一段——机械扫描（不调 LLM）。
+   *
+   * 读取全部已落盘的 act_map/sequence_list/sequences/scenes/beats，跑 structuralAudit.auditStructure，
+   * 把结果格式化为一段项目符号列表，供第二段 LLM 语义判断在 <structural_scan_result> 标签下参考。
+   * 只有 instruction 涉及结构合法性维度时才跑这一段（避免其余 4 个维度被迫多读一堆文件）。
+   */
+  private async runStructuralScanIfNeeded(instruction: string): Promise<string> {
+    const structureKeywords = ['结构', '幕', '序列满足', '场景满足', '节拍满足', 'structure']
+    const text = instruction.toLowerCase()
+    const isStructureCheck = structureKeywords.some(kw => text.includes(kw.toLowerCase()))
+    if (!isStructureCheck) return ''
+
+    const allPaths = await this.fileManager.listAssetFiles()
+    const actMap = await safeRead(this.fileManager, 'act_map.md')
+    const sequenceList = await safeRead(this.fileManager, 'sequence_list.md')
+
+    const sequenceFiles = new Map<string, string>()
+    const sceneFiles = new Map<string, string>()
+    const beatFiles = new Map<string, string>()
+    for (const a of allPaths) {
+      if (!a.exists) continue
+      const seqMatch = /^sequences\/(.+)\.md$/.exec(a.path)
+      const sceneMatch = /^scenes\/(.+)\.md$/.exec(a.path)
+      const beatMatch = /^beats\/(.+)\.md$/.exec(a.path)
+      if (seqMatch) sequenceFiles.set(seqMatch[1], await safeRead(this.fileManager, a.path))
+      if (sceneMatch) sceneFiles.set(sceneMatch[1], await safeRead(this.fileManager, a.path))
+      if (beatMatch) beatFiles.set(beatMatch[1], await safeRead(this.fileManager, a.path))
+    }
+
+    const issues = auditStructure({ actMap, sequenceList, sequenceFiles, sceneFiles, beatFiles })
+    if (issues.length === 0) {
+      return '<structural_scan_result>\n机械扫描未发现结构性缺失/悬空引用/格式错误。\n</structural_scan_result>'
+    }
+    const lines = issues.map((i: StructuralIssue) => `- [${i.level}] ${i.sequenceId}：${i.detail}（${i.issueType}）`)
+    return `<structural_scan_result>\n以下是机械扫描发现的结构性问题：\n${lines.join('\n')}\n</structural_scan_result>`
+  }
+
+  /**
+   * v7.3：宽泛 subagent 独立隔离上下文执行。
+   *
+   * 1. 按 subagent.skills 拼装预装 skill 正文到 system prompt
+   * 2. 新建专属 messages 数组（与主 Orchestrator 隔离）
+   * 3. 走 runAgentLoop 多轮循环，工具集为 read_file / read_reference
+   * 4. 循环结束后取 finalText，校验并落盘
+   *
+   * 质检 subagent 的"只读隔离"由工具集层面保证——它只能拿到 read_file/read_reference，
+   * 不提供任何写入工具，引擎侧统一落盘。
+   */
+  private async runSubagentWithIsolatedContext(
+    subagent: SubagentSpec,
+    instruction: string,
+    target?: string,
+  ): Promise<ToolResult> {
+    const subagentSkills = getSkills(subagent.id)
+    const preloadedSkills = (subagent.skills ?? [])
+      .map(skillId => subagentSkills.find(s => s.skillId === skillId))
+      .filter((s): s is SkillSpec => s !== undefined)
+
+    // 拼装 system prompt = subagent 角色前缀 + 全部预装 skill 正文
+    const preamble = subagent.preamble || ''
+    const skillBodies = preloadedSkills.map(s => s.body).join('\n\n---\n\n')
+    const systemPrompt = skillBodies ? `${preamble}\n\n${skillBodies}` : preamble
+
+    // v7.3：质检 subagent 的结构合法性维度先跑机械扫描，注入 <structural_scan_result>
+    const structuralScan = subagent.id === 'quality_checker'
+      ? await this.runStructuralScanIfNeeded(instruction)
+      : ''
+
+    // 目标序列注入 instruction
+    const userContent = [
+      target ? `${instruction}\n\n目标序列：${target}` : instruction,
+      structuralScan,
+    ].filter(Boolean).join('\n\n')
+
+    const initialMessages: ChatCompletionMessageParam[] = [
+      { role: 'user', content: userContent },
+    ]
+
+    this.emit('subagent_loop_start', {
+      toolId: subagent.id,
+      toolName: subagent.name,
+      message: `${subagent.name} 进入独立上下文执行（预装 ${preloadedSkills.length} 份规则）`,
+    })
+
+    const result = await runAgentLoop(this.llm, {
+      systemPrompt,
+      initialMessages,
+      tools: [READ_FILE_TOOL, READ_REFERENCE_TOOL],
+      executeToolCall: (tc) => this.executeReadToolCall(tc, subagent.id, preloadedSkills),
+      maxRounds: SUBAGENT_LOOP_MAX_ROUNDS,
+      onRound: (round) => {
+        this.emit('subagent_loop_step', {
+          toolId: subagent.id,
+          toolName: subagent.name,
+          round,
+          message: `${subagent.name} 第 ${round + 1} 轮`,
+        })
+      },
+    })
+
+    this.emit('subagent_loop_complete', {
+      toolId: subagent.id,
+      toolName: subagent.name,
+      message: result.finalText !== null
+        ? `${subagent.name} 执行完成（${result.roundsUsed} 轮）`
+        : `${subagent.name} 超轮次上限（${result.roundsUsed} 轮）`,
+    })
+
+    if (result.finalText === null) {
+      return { success: false, error: '达到内部循环轮次上限仍未产出结果', skillName: subagent.name }
+    }
+
+    // 质检 subagent：产出直接作为报告文本，不经过 outputValidator（它不打 TAG、不落盘）
+    if (subagent.id === 'quality_checker') {
+      return {
+        success: true,
+        output: result.finalText,
+        skillName: subagent.name,
+      }
+    }
+
+    // 构筑/写作 subagent：走 outputValidator 校验 + 落盘
+    return this.validateAndPersist(subagent, instruction, result.finalText, target)
+  }
+
+  /**
+   * v7.3：从 instruction 中解析本次目标层/文体——按预装 skill 各自的 `when` 关键词命中数打分，
+   * 命中最多的一份胜出；全零命中时回退到 outputTags 是否已出现在 finalText 里做兜底判断
+   * （LLM 产出的 TAG 通常与它实际选用的规则一致，即使 instruction 没给出明确关键词）；
+   * 仍无法判定则回退到预装列表第一项，保证行为始终可预测。
+   */
+  private resolveTargetSkill(
+    subagent: SubagentSpec,
+    instruction: string,
+    finalText: string,
+  ): SkillSpec | undefined {
+    const subagentSkills = getSkills(subagent.id)
+    const preloadedIds = subagent.skills ?? []
+    const candidates = preloadedIds.length > 0
+      ? preloadedIds.map(id => subagentSkills.find(s => s.skillId === id)).filter((s): s is SkillSpec => s !== undefined)
+      : subagentSkills
+
+    if (candidates.length === 0) return undefined
+    if (candidates.length === 1) return candidates[0]
+
+    const text = instruction.toLowerCase()
+    let best = candidates[0]
+    let bestScore = -1
+    let tie = false
+    for (const skill of candidates) {
+      const score = skill.when.reduce((n, kw) => n + (kw && text.includes(kw.toLowerCase()) ? 1 : 0), 0)
+      if (score > bestScore) { bestScore = score; best = skill; tie = false }
+      else if (score === bestScore) { tie = true }
+    }
+    if (bestScore > 0 && !tie) return best
+
+    // instruction 关键词零命中或平局 → 用 finalText 里实际出现的 outputTags 反查
+    const byTag = candidates.find(s => s.outputTags[0] && finalText.includes(s.outputTags[0]))
+    if (byTag) return byTag
+
+    return best
+  }
+
+  /**
+   * v7.3：构筑/写作 subagent 产出校验与落盘。
+   *
+   * 根据 resolveTargetSkill 判定的目标层，选中对应预装 skill 的 outputTags 做提取校验，
+   * 然后写入对应路径。
+   *
+   * 当前采用单层模式——一次调用只处理一层；多层需求由 Orchestrator 拆成多次调用。
+   */
+  private async validateAndPersist(
+    subagent: SubagentSpec,
+    instruction: string,
+    finalText: string,
+    target?: string,
+  ): Promise<ToolResult> {
+    const targetSkill = this.resolveTargetSkill(subagent, instruction, finalText)
+
+    if (!targetSkill) {
+      return { success: false, error: `未找到 ${subagent.id} 的可用 Skill`, skillName: subagent.name }
+    }
+
+    // 写入路径由 skill.writes[0] + target 拼接
+    const writePath = target
+      ? targetSkill.writes[0].replace(/<ID>/g, target).replace(/<target>/g, target)
+      : targetSkill.writes[0]
+
+    const specView: SkillSpec = { ...targetSkill, writes: [writePath] }
+    const validation = validateOutput(finalText, specView)
+
+    if (!validation.valid) {
+      const missing = validation.missingTags.join(', ')
+      return {
+        success: false,
+        error: `产出缺少 TAG: ${missing}`,
+        skillId: targetSkill.skillId,
+        skillName: targetSkill.name,
+      }
+    }
+
+    const extracted = validation.extracted[writePath]
+    if (!extracted) {
+      return {
+        success: false,
+        error: `TAG 校验通过但未提取到 ${writePath} 内容`,
+        skillId: targetSkill.skillId,
+        skillName: targetSkill.name,
+      }
+    }
+
+    await this.fileManager.writeFile(writePath, extracted)
+    return {
+      success: true,
+      writes: [writePath],
+      output: finalText,
+      skillId: targetSkill.skillId,
+      skillName: targetSkill.name,
+    }
+  }
+
+  /**
+   * v7.3：批量并发调度（构筑/写作 subagent 共用）。
+   *
+   * 按序列 ID 列表拆分并发池，对每个序列并发起一次 runSubagentWithIsolatedContext 调用。
+   * 复用现有 runWithConcurrency 原语（不改一行）。
+   */
+  private async runBatchWithSubagent(
+    subagent: SubagentSpec,
+    instruction: string,
+    seqIds: string[],
+  ): Promise<ToolResult> {
+    this.emit('tool_start', {
+      toolId: subagent.id,
+      toolName: subagent.name,
+      message: `并发批量 ${subagent.name} × ${seqIds.length} 序列（并发 ${BATCH_CONCURRENCY}）`,
+    })
+
+    const results = await this.runWithConcurrency(seqIds, BATCH_CONCURRENCY,
+      (seqId) => this.runSubagentWithIsolatedContext(subagent, instruction, seqId))
+
+    // 汇总（下标对齐）
+    const writes: string[] = []
+    const warnings: string[] = []
+    let okCount = 0
+    results.forEach((r, i) => {
+      if (r.success) {
+        okCount++
+        if (r.writes) writes.push(...r.writes)
+        if (r.warnings) warnings.push(...r.warnings)
+      } else {
+        warnings.push(`序列 ${seqIds[i]} 失败：${r.error ?? '未知错误'}`)
+      }
+    })
+
+    return {
+      success: okCount > 0,
+      writes,
+      output: '',
+      skillName: subagent.name,
+      error: okCount === 0 ? '全部序列执行失败' : undefined,
+      warnings: warnings.length > 0 ? warnings : undefined,
+    }
+  }
+
   /** v6.7 从场景表抽 sc 那一行原样（供 <target_scene> 精准注入，模型只看这一个场景） */
   private sliceSceneRow(scenesMd: string, sc: string): string {
     const line = scenesMd.split(/\r?\n/).find((l) => l.includes(sc))
@@ -1556,16 +1872,15 @@ export class OrchestratorEngine {
   ): Promise<DispatchResult> {
     // ① 计算可用 Subagent（v5：全部始终可见）
     this.onEvent = onEvent
-    // v6.8 审计修复状态每轮用户输入重置（不跨用户输入残留，避免"检查后用户改做别的"误拦上游）
-    this.auditFixMode = false
-    this.auditScope = null
     const availableSubagents = getAvailableSubagents()
 
     // ===== v6.6 Guard-0/1：产品锁 + Phase Gate 双重可见性过滤（FC 面）=====
     //  - profileLock=null：未选产品 → 仅 reset_all 可见（设计区+成文区全隐藏）
-    //  - 设计期：剔除全部四 writer（须先🔒锁定大纲进写作期才可写正文）
-    //  - 写作期：剔除设计区 + story_checker + 非本产品 writer（仅留 profileLock.writerSubagentId）
+    //  - 设计期：剔除 prose_writer（须先🔒锁定大纲进写作期才可写正文）
+    //  - 写作期：剔除设计区 + sequence_builder（构筑）
+    //  - v7.3：quality_checker 受 selfCheckStore 开关控制，与阶段无关，独立判定
     const phaseState0 = usePhaseStore.getState()
+    const selfCheckEnabled = useSelfCheckStore.getState().selfCheckEnabled
     // v6.6：input_normalizer 仅在"无设计资产"时进 FC 面（早期可用），有资产后隐藏
     const allAssetFiles0 = await this.fileManager.listAssetFiles()
     const hasDesignAssets = allAssetFiles0.some(
@@ -1577,17 +1892,18 @@ export class OrchestratorEngine {
     if (this.profileLock === null) {
       visibleSubagents = availableSubagents.filter((sa) => sa.id === 'reset_all')
     } else if (phaseState0.isWriting()) {
-      const activeWriter = this.profileLock.writerSubagentId
       visibleSubagents = availableSubagents.filter(
         (sa) =>
           !CREATIVE_TOOL_IDS.includes(sa.id) &&
-          sa.id !== 'story_checker' &&
           sa.id !== 'input_normalizer' &&
-          !(WRITER_IDS.includes(sa.id) && sa.id !== activeWriter),
+          !(sa.id === 'quality_checker' && !selfCheckEnabled),
       )
     } else {
       visibleSubagents = availableSubagents.filter(
-        (sa) => !WRITER_IDS.includes(sa.id) && (sa.id !== 'input_normalizer' || !hasDesignAssets),
+        (sa) =>
+          !WRITER_IDS.includes(sa.id) &&
+          (sa.id !== 'input_normalizer' || !hasDesignAssets) &&
+          !(sa.id === 'quality_checker' && !selfCheckEnabled),
       )
     }
     const toolSpecs = visibleSubagents.map(buildFunctionSpec)
@@ -1667,15 +1983,13 @@ export class OrchestratorEngine {
     // ④ 调度状态
     const state: SchedulerState = {
       currentRound: 0,
-      maxRounds: MAX_ROUNDS,
+      maxRounds: SAFETY_MAX_ROUNDS,
       toolsCalled: [],
       toolResults: [],
-      auditRound: 0,
-      maxAuditRounds: 3,
     }
 
-    // ⑤ FC 调度循环 + 审计循环（独立计数）
-    while (state.currentRound < MAX_ROUNDS && state.auditRound < state.maxAuditRounds) {
+    // ⑤ FC 调度循环（v7.3：取消业务轮次上限，仅留安全阀防死循环）
+    while (state.currentRound < state.maxRounds) {
 
       // 上下文管理：检查 token 是否超限
       if (estimateTokens(messages) > CONTEXT_LIMIT_CHARS) {
@@ -1687,7 +2001,7 @@ export class OrchestratorEngine {
       this.emit('orchestrator_thinking', {
         round: state.currentRound + 1,
         maxRounds: state.maxRounds,
-        message: `第 ${state.currentRound + 1}/${MAX_ROUNDS} 轮：正在分析你的需求...`,
+        message: `第 ${state.currentRound + 1} 轮：正在分析你的需求...`,
       })
 
       let response
@@ -1826,20 +2140,13 @@ export class OrchestratorEngine {
             }
 
             // 将 tool 结果加入消息历史
-            // story_checker 注入完整报告，其余 Subagent 返回简短消息
-            if (subagentSpec.id === 'story_checker' && result.success) {
-              const report = await this.fileManager.readFile('_check_report.md')
-              // v6.8 Guard-3 状态：由 AUDIT_SCOPE 标记判定（避免总体结论正则跨段误匹配）
-              const scopeMatch = report.match(/<!-- AUDIT_SCOPE: (\w+) -->/)
-              const scope = scopeMatch?.[1] ?? null
-              this.auditFixMode = scope === 'sequence_only' || scope === 'has_upstream'
-              this.auditScope = scope === 'sequence_only' ? 'sequence_only' : null
+            // quality_checker：注入完整报告文本（result.output），其余 Subagent 返回简短消息
+            if (subagentSpec.id === 'quality_checker' && result.success && result.output) {
               messages.push({
                 role: 'tool',
                 tool_call_id: toolCall.id,
-                content: report,
+                content: result.output,
               } as ChatCompletionMessageParam)
-              state.auditRound++
             } else {
               messages.push({
                 role: 'tool',
@@ -1880,13 +2187,11 @@ export class OrchestratorEngine {
       }
     }
 
-    // 超过轮次上限 → 强制结束
-    const auditMsg = state.auditRound >= state.maxAuditRounds
-      ? '检查和修复已达 3 轮上限，部分问题可能需要你的进一步指导。'
-      : `已执行 ${state.toolsCalled.length} 个工具（达 ${MAX_ROUNDS} 轮上限），请继续补充剩余需求。`
+    // 超过安全轮次上限 → 兜底强制结束
+    const timeoutMsg = `已执行 ${state.toolsCalled.length} 个工具（达安全轮次上限），请继续补充剩余需求。`
 
     this.emit('engine_complete', {
-      message: auditMsg,
+      message: timeoutMsg,
     })
 
     // 后处理：如果有创作 Subagent 被执行，自动更新 user_requirements.md 的状态标记
@@ -1908,7 +2213,7 @@ export class OrchestratorEngine {
     return {
       success: true,
       results: state.toolResults,
-      response: auditMsg,
+      response: timeoutMsg,
       stageProposal: await this.probeAllScenesReady(),
     }
   }

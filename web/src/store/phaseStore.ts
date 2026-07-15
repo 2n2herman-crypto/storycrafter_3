@@ -5,7 +5,7 @@ import type { FileManager } from '../orchestrator/fileManager'
  * Phase Store（v6.1 阶段闸门状态层）
  *
  * 把「设计期 designing」与「落地期 writing」物理隔开：
- *   - lock(fm)：校验六项核心静态设定齐全且非空、收集现有 sequences/*.md 全员清单，
+ *   - lock(fm)：校验六项核心静态设定齐全且非空、收集现有 sequences/scenes/beats/*.md 全员清单，
  *               全体拍照存入 baselines 作 UI 对照基线；置 phase='writing'。
  *   - unlock()：回退 phase 并清空快照，**保留 chapters/ 正文成果**
  *               （解锁是为了回去微调设定再续写不该丢稿子）。
@@ -19,10 +19,10 @@ import type { FileManager } from '../orchestrator/fileManager'
 export type StoryPhase = 'designing' | 'writing'
 
 /**
- * 固定的六项静态锁定资产（per-sequence 化后的第七项改为运行时按 _seq_/_sequences_ 前缀动态展开）。
+ * 固定的六项静态锁定资产。
  *
  * 注：不含 user_requirements.md（元数据始终可更新）、_check_report.md/draft_history.md/chapters/*
- * （写作期产物本身就该可写）。原 monolithic 时代的 scene_beat_outline.md 字面值随四步流水线改造退出历史舞台。
+ * （写作期产物本身就该可写）。
  */
 export const LOCKED_STATIC_PATHS = [
   'worldbuilding.md',
@@ -33,14 +33,14 @@ export const LOCKED_STATIC_PATHS = [
   'subplots.md',
 ] as readonly string[]
 
-/** 运行时按此前缀枚举已生成的场记切片并入锁定集（pipeline 终步成品所在目录）*/
-const DYNAMIC_LOCKED_PREFIX = 'sequences/'
+/** v7.3：三前缀动态锁定——序列/场景/节拍三层文件拆分后一并纳入冻结集 */
+const DYNAMIC_LOCKED_PREFIXES = ['sequences/', 'scenes/', 'beats/'] as const
 
 interface PhaseState {
   phase: StoryPhase
-  /** key=path,value=lock() 当时的 content snapshot；含六项静态常数 + 所有现存 sequences/<ID>.md 条目 */
+  /** key=path,value=lock() 当时的 content snapshot；含六项静态常数 + 所有现存三层文件条目 */
   baselines: Record<string, string>
-  /** 写作期内记录当时存在过的 sequences paths 供 isLockedPath 精确判别是否属冻结集 */
+  /** 写作期内记录当时存在过的全部 locked paths（静态 + 动态扩展）供 isLockedPath 精确判别 */
   lockedSequencePaths: Set<string>
 
   lock: (fm: FileManager) => Promise<void>
@@ -52,6 +52,8 @@ interface PhaseState {
   isLockedPath: (path: string) => boolean
   /** 取某 path 的 baseline 内容（undefined 表示未纳入或非 writing 期） */
   getBaseline: (path: string) => string | undefined
+  /** v7.3：单序列锁定——将 seqId 对应的三文件加入锁定集，不改变 phase 状态 */
+  lockSequenceFiles: (seqId: string) => void
 }
 
 async function readIfExists(fm: FileManager, p: string): Promise<string> {
@@ -62,11 +64,14 @@ async function readIfExists(fm: FileManager, p: string): Promise<string> {
   }
 }
 
-/** 枚举当前 fileManager 下所有已实际写盘的 sequences/*.md 路径（pipeline 终品全集） */
-async function collectExistingSequences(fm: FileManager): Promise<string[]> {
+/** v7.3：枚举当前 fileManager 下所有已实际写盘的三层文件路径 */
+async function collectExistingLayerFiles(fm: FileManager): Promise<string[]> {
   const all = await fm.listAssetFiles()
   return all
-    .filter((a) => a.path.startsWith(DYNAMIC_LOCKED_PREFIX) && a.exists)
+    .filter((a) =>
+      a.exists &&
+      DYNAMIC_LOCKED_PREFIXES.some((prefix) => a.path.startsWith(prefix)),
+    )
     .map((a) => a.path)
 }
 
@@ -86,18 +91,18 @@ export const usePhaseStore = create<PhaseState>((set, get) => ({
       throw new Error(`以下核心设定尚未就绪，暂不能进入写作期:${missing.join('、')}`)
     }
 
-    const seqPaths = await collectExistingSequences(fm)
+    const layerPaths = await collectExistingLayerFiles(fm)
 
     // 全员拍照存入 baselines（UI 左视窗对照数据源）
     const snap: Record<string, string> = {}
-    for (const p of [...LOCKED_STATIC_PATHS, ...seqPaths]) {
+    for (const p of [...LOCKED_STATIC_PATHS, ...layerPaths]) {
       snap[p] = await readIfExists(fm, p)
     }
 
     set({
       phase: 'writing',
       baselines: snap,
-      lockedSequencePaths: new Set(seqPaths),
+      lockedSequencePaths: new Set(layerPaths),
     })
   },
 
@@ -137,5 +142,17 @@ export const usePhaseStore = create<PhaseState>((set, get) => ({
     const s = get()
     if (s.phase !== 'writing') return undefined
     return s.baselines[path]
+  },
+
+  /** v7.3：将 seqId 的三个层文件加入锁定集，不改变 phase */
+  lockSequenceFiles(seqId: string) {
+    set((state) => ({
+      lockedSequencePaths: new Set([
+        ...state.lockedSequencePaths,
+        `sequences/${seqId}.md`,
+        `scenes/${seqId}.md`,
+        `beats/${seqId}.md`,
+      ]),
+    }))
   },
 }))

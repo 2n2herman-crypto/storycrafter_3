@@ -14,6 +14,7 @@ import { useChatStore } from './store/chatStore'
 import { useUIStore } from './store/uiStore'
 import { usePhaseStore } from './store/phaseStore'
 import { InMemoryFileManager, DEFAULT_ASSET_PATHS } from './orchestrator/fileManager'
+import type { FileManager } from './orchestrator/fileManager'
 import { HttpFileManager } from './api/assets'
 import { listProjects, createProject, deleteProject, type ProjectMeta } from './api/projects'
 import { LLMClient } from './llm/client'
@@ -27,6 +28,8 @@ function App() {
   const [view, setView] = useState<'main' | 'settings'>('main')
   const [projects, setProjects] = useState<ProjectMeta[]>([])
   const [currentProject, setCurrentProject] = useState<ProjectMeta | null>(null)
+  /** v7.3：设计完整度进度条 + 合并按钮需要直接操作 FileManager，跟随当前项目切换 */
+  const [fileManager, setFileManager] = useState<FileManager | null>(null)
 
   const assets = useAssetStore((s) => s.assets)
   const initAssetStore = useAssetStore((s) => s.init)
@@ -51,6 +54,7 @@ function App() {
       await initAssetStore(fm)
       await initChatStore(engine, project.id)
       setCurrentProject(project)
+      setFileManager(fm)
       setIsReady(true)
     },
     [initAssetStore, initChatStore],
@@ -79,6 +83,7 @@ function App() {
         if (cancelled) return
         await initAssetStore(fm)
         await initChatStore(engine, null)
+        setFileManager(fm)
         setIsReady(true)
       }
     })()
@@ -142,6 +147,7 @@ function App() {
       selectedPath={selectedCard}
       onSelect={setSelectedCard}
       wordExportAvailable={currentProject !== null}
+      fileManager={fileManager}
     />,
     <CurrentPanel
       filename={selectedLabel}

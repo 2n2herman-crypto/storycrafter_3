@@ -52,6 +52,56 @@
   cursor: not-allowed;
 }
 
+/* v7.3：自检开关行 */
+.toolbarRow {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+/* v7.3：设计完整度进度条 */
+.completenessBar {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.completenessRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.completenessProgress {
+  flex: 1;
+  height: 6px;
+}
+
+.completenessCount {
+  font-size: 11px;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+.completenessFailList {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.completenessFailItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
+}
+
 .body {
   flex: 1;
   overflow-y: auto;

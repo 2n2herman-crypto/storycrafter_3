@@ -28,6 +28,9 @@ export interface SubagentSpec {
   /** 角色定位/任务规划/质量控制前缀，作为 Skill body 的前置 system prompt */
   preamble: string
 
+  /** v7.3：预装 skillId 列表（宽泛 subagent 启动时整份拼入专属 messages 的 system 消息） */
+  skills?: string[]
+
   /** v7.1 M5：来源标记（builtin=内置 glob，user=server/data/skills overlay） */
   source?: 'builtin' | 'user'
 }
@@ -75,6 +78,9 @@ export interface SkillSpec {
 
   /** v7.1 M5：来源标记（builtin=内置 glob，user=server/data/skills overlay） */
   source?: 'builtin' | 'user'
+
+  /** v7.3：该 Skill 目录下 references/*.md 的文件名列表（不含路径与 .md 后缀），供 read_reference 工具查询 */
+  references?: string[]
 
   /**
    * v6.2 可选结构化校验钩子。
@@ -207,10 +213,10 @@ export interface ToolResult {
 
 /** 调度引擎的运行时状态 */
 export interface SchedulerState {
-  /** 当前调度轮次（最多 5 轮） */
+  /** 当前调度轮次 */
   currentRound: number
 
-  /** 最大允许轮次 */
+  /** 最大允许轮次（安全阀，非业务约束） */
   maxRounds: number
 
   /** 已调用的 Tool ID 列表 */
@@ -218,12 +224,6 @@ export interface SchedulerState {
 
   /** 已执行的 Tool 结果 */
   toolResults: ToolResult[]
-
-  /** 当前审计轮次（v5 新增，上限 3） */
-  auditRound: number
-
-  /** 最大审计轮次（固定 3） */
-  maxAuditRounds: number
 }
 
 /** 一次 processUserInput 的整体结果 */
@@ -253,6 +253,9 @@ export type ExecutionEventType =
   | 'tool_retry'
   | 'tool_complete'
   | 'tool_error'
+  | 'subagent_loop_start'   // v7.3：宽泛 subagent 专属循环开始
+  | 'subagent_loop_step'    // v7.3：专属循环内一轮 read_file/read_reference（可选，用于展示进度）
+  | 'subagent_loop_complete' // v7.3：专属循环结束，取得最终文本
   | 'engine_complete'
   | 'engine_error'
 

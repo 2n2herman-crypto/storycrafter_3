@@ -59,7 +59,13 @@ interface AssetState {
 function computeLabel(path: string): string {
   if (FILE_LABELS[path]) return FILE_LABELS[path]
   const seqMatch = path.match(/^sequences\/(.+)\.md$/)
-  if (seqMatch) return `场记 ${seqMatch[1]}`
+  if (seqMatch) return `序列 ${seqMatch[1]}`
+  const sceneMatch = path.match(/^scenes\/(.+)\.md$/)
+  if (sceneMatch) return `场景 ${sceneMatch[1]}`
+  const beatMatch = path.match(/^beats\/(.+)\.md$/)
+  if (beatMatch) return `节拍 ${beatMatch[1]}`
+  const outlineMatch = path.match(/^sequence_outlines\/(.+)\.md$/)
+  if (outlineMatch) return `序列细纲 ${outlineMatch[1]}`
   const chMatch = path.match(/^chapters\/(.+)\.md$/)
   if (chMatch) {
     const name = chMatch[1]
@@ -84,6 +90,8 @@ interface AssetStore {
   refreshFile: (path: string) => Promise<void>
   refreshAllFiles: () => Promise<void>
   getAssetList: () => AssetCardData[]
+  /** v7.3：设计完整度——{分子=已落盘非空的序列/场景/节拍文件数, 分母=序列数×3} */
+  getDesignCompleteness: () => { numerator: number; denominator: number; seqIds: string[] }
   clearAll: () => void
 }
 
@@ -234,11 +242,13 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
       // 故此处按路径前缀兜底分组避免它们在 AssetCardPanel 堆成一坨 group='' 空 bucket。
       const meta = ASSET_META[path]
       const fallbackGroup =
-        path.startsWith('sequences/')
+        path.startsWith('sequences/') || path.startsWith('scenes/') || path.startsWith('beats/')
           ? '细纲'
-          : path.startsWith('chapters/')
-            ? '剧本'
-            : ''
+          : path.startsWith('sequence_outlines/')
+            ? '序列细纲合并稿'
+            : path.startsWith('chapters/')
+              ? '剧本'
+              : ''
       return {
         path,
         filename: computeLabel(path),
@@ -256,6 +266,25 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
 
   clearAll: () => {
     set({ assets: {}, fileManager: null })
+  },
+
+  /**
+   * v7.3：从 sequence_list.md 解析序列 ID，统计 sequences/scenes/beats 三前缀下
+   * 已落盘非空文件数占 序列数×3 的比例，供 DesignCompletenessBar 展示进度。
+   */
+  getDesignCompleteness: () => {
+    const { assets } = get()
+    const seqListContent = assets['sequence_list.md']?.content ?? ''
+    const seqIds = [...new Set(Array.from(seqListContent.matchAll(/\bS\d+-\d+\b/g), (m) => m[0]))].sort()
+    const denominator = seqIds.length * 3
+    let numerator = 0
+    for (const [path, state] of Object.entries(assets)) {
+      if (!state.content || state.content.trim().length === 0) continue
+      if (path.startsWith('sequences/') || path.startsWith('scenes/') || path.startsWith('beats/')) {
+        numerator++
+      }
+    }
+    return { numerator, denominator, seqIds }
   },
 }))
 

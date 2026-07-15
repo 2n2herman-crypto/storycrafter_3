@@ -129,6 +129,12 @@ const skillModules = import.meta.glob<{ default: string }>(
   { query: '?raw', eager: true },
 )
 
+// v7.3：references 目录扫描（供 read_reference 工具查找）
+const referenceModules = import.meta.glob<{ default: string }>(
+  './*/*/references/*.md',
+  { query: '?raw', eager: true },
+)
+
 /** 禁止 Skill frontmatter 声明属主（硬约束：Skill 不决定自己属于哪个 agent）。 */
 const FORBIDDEN_SKILL_KEYS = ['subagent', 'owner', 'agent']
 
@@ -160,6 +166,7 @@ function buildRegistries(): {
       description: asString(data.description),
       group: asString(data.group),
       preamble: body,
+      skills: asArray(data.skills),
     }
     subagents.push(spec)
     preambles.set(id, body)
@@ -194,6 +201,7 @@ function buildRegistries(): {
       outputTags: asArray(data.outputTags),
       preamble: preambles.get(subagentId) ?? '',
       body,
+      references: [], // 先占位，step③会填充
     }
 
     const list = skillsBySubagent.get(subagentId) ?? []
@@ -216,10 +224,46 @@ function buildRegistries(): {
     }
   }
 
+  // ④ v7.3：解析 references 文件，按 subagentId+skillId 归类，填充 SkillSpec.references
+  for (const [path] of Object.entries(referenceModules)) {
+    const segs = path.split('/')
+    // 路径：./<subagentId>/<skillId>/references/<name>.md
+    const name = segs[segs.length - 1].replace(/\.md$/, '')
+    const skillId = segs[segs.length - 3]
+    const subagentId = segs[segs.length - 4]
+
+    const skills = skillsBySubagent.get(subagentId)
+    if (!skills) continue
+    const skill = skills.find((s) => s.skillId === skillId)
+    if (!skill) continue
+    skill.references = [...(skill.references ?? []), name]
+  }
+
   return { subagents, skillsBySubagent }
 }
 
 const builtIn = buildRegistries()
+
+// ===== v7.3 References 内容查表（供 executeReadToolCall 查找） =====
+
+function buildReferenceContents(
+  refModules: Record<string, { default: string }>,
+): Map<string, string> {
+  const map = new Map<string, string>()
+  for (const [path, mod] of Object.entries(refModules)) {
+    const segs = path.split('/')
+    // 路径：./<subagentId>/<skillId>/references/<name>.md
+    const name = segs[segs.length - 1].replace(/\.md$/, '')
+    const skillId = segs[segs.length - 3]
+    const subagentId = segs[segs.length - 4]
+    const key = `${subagentId}/${skillId}/${name}`
+    map.set(key, mod.default)
+  }
+  return map
+}
+
+/** v7.3：references 文件内容查表，key = `${subagentId}/${skillId}/${name}`，value = 文件正文 */
+export const REFERENCE_CONTENTS: Map<string, string> = buildReferenceContents(referenceModules)
 
 // v7.1 M5：可变 registry——boot 时 loadUserSkills() 把 server/data/skills/ 用户源 overlay 到内置源。
 // export let 提供 live binding：重新赋值后引用方（assetStore/skillRouter/orchestratorEngine）拿到新值。
