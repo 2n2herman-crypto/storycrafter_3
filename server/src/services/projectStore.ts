@@ -13,6 +13,10 @@ export interface ProjectMeta {
   id: string
   name: string
   description?: string
+  /** v7.4：项目级产品方向，跨服务重启恢复 Orchestrator profileLock */
+  productKind?: 'novel' | 'screenplay' | 'long_drama' | 'short_drama'
+  /** v7.4：项目当前阶段，跨服务重启恢复 Phase Gate */
+  phase?: 'designing' | 'writing'
   createdAt: string
   updatedAt: string
   /** v7.1 M6 预留：资产间关系（projectStore 透传不解释，文件关系系统未实现） */
@@ -98,6 +102,7 @@ export function createProject(name: string): ProjectMeta {
   const meta: ProjectMeta = {
     id,
     name: name || '未命名项目',
+    phase: 'designing',
     createdAt: nowIso(),
     updatedAt: nowIso(),
   }
@@ -108,12 +113,22 @@ export function createProject(name: string): ProjectMeta {
 
 export function updateProject(
   projectId: string,
-  patch: { name?: string; description?: string },
+  patch: {
+    name?: string
+    description?: string
+    productKind?: ProjectMeta['productKind'] | null
+    phase?: ProjectMeta['phase']
+  },
 ): ProjectMeta {
   const meta = getProject(projectId)
   if (!meta) throw new ProjectNotFound(projectId)
   if (patch.name !== undefined) meta.name = patch.name
   if (patch.description !== undefined) meta.description = patch.description
+  if (patch.productKind !== undefined) {
+    if (patch.productKind === null) delete meta.productKind
+    else meta.productKind = patch.productKind
+  }
+  if (patch.phase !== undefined) meta.phase = patch.phase
   meta.updatedAt = nowIso()
   atomicWrite(metaPath(projectId), JSON.stringify(meta, null, 2))
   return meta
