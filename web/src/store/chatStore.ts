@@ -35,7 +35,7 @@ interface ChatStore {
   clearMessages: () => void
   toggleLogExpanded: () => void
   clearExecutionLog: () => void
-  /** v6.6：UI 产品选择器落定产品档案（仅在未锁定时生效；切换须 reset_all）*/
+  /** UI 产品选择器落定项目产品档案；选定后不可在项目内切换。 */
   setProduct: (kind: ProductKind) => void
   /** v6.6：投喂文件落到 _input_raw.md（input_normalizer 生产端）*/
   appendInputRaw: (filename: string, content: string) => Promise<void>
@@ -244,27 +244,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }))
       persistMessage(errorMsg)
     } finally {
-      // v6.6：同步产品锁定状态（reset_all 执行后会释放 profileLock，UI 须感知）
       const product = _engine?.getProfile()?.kind ?? null
       const phase = usePhaseStore.getState().phase
-      set((state) => ({
-        isProcessing: false,
-        product,
-        // reset_all 会释放产品锁并清空资产，同时撤销当前项目的待选阶段卡。
-        messages: product === null
-          ? state.messages.filter(
-              (m) => !(m.kind === 'stage_proposal' && m.stageState === 'pending'),
-            )
-          : state.messages,
-      }))
-      // v7.4：覆盖 reset_all 等引擎内状态变更，保证重启后 profile/phase/待选卡可恢复。
+      set({ isProcessing: false, product })
+      // v7.4：持久化当前项目的产品方向与创作阶段，供切换项目或重启后恢复。
       if (_projectId) {
         try {
-          await updateProject(_projectId, {
-            productKind: product,
-            phase,
-            ...(product === null ? { stageProposalPending: false } : {}),
-          })
+          await updateProject(_projectId, { productKind: product, phase })
         } catch (e) {
           console.error('[chatStore] 持久化项目运行状态失败', e)
         }
@@ -298,7 +284,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   setProduct: (kind: ProductKind) => {
     if (!_engine) return
-    // 仅在未锁定产品时允许选择；已锁定须 reset_all 后重选（守 03 §1.3 切换=reset）
+    // 产品方向按项目锁定；需要其他方向时新建项目。
     if (_engine.getProfile() !== null) return
     _engine.lockProfile(kind)
     set({ product: kind })
