@@ -16,7 +16,7 @@ export interface ProjectMeta {
 export interface ProjectPatch {
   name?: string
   description?: string
-  /** null 表示 reset_all 后清除产品锁 */
+  /** null 表示项目尚未选择产品方向（用于新项目与旧数据迁移） */
   productKind?: ProductKind | null
   phase?: StoryPhase
   stageProposalPending?: boolean
