@@ -7,7 +7,7 @@
  * v5.5：buildAgentPrompt 支持注入最近若干轮对话历史，用于解析指代性澄清。
  */
 
-import type { ConversationTurn, AssetFileInfo } from '../types'
+import type { ConversationTurn } from '../types'
 
 /**
  * v7.3：单文件 XML 包装辅助函数。
@@ -90,21 +90,4 @@ export function buildAgentPrompt(
     .join('\n\n')
 }
 
-/**
- * 列举指定 prefix 下已生成存在的资产路径(v6.1 dynamic asset listing primitive)
- *
- * 用于旁系审计 subagent coverage_auditor(Wave E 启用时挂载)对照 act_map 解析覆盖率缺口。
- * 本波次(B)先行预埋占位降低未来返工面积；暂无任何 Skill 默认 reads 触达本能力。
- *
- * @param assets 由 fileManager.listAssetFiles() 返回的全量元信息快照
- * @param prefix 路径前缀过滤器 如 'sequences/' 或 'chapters/'
- * @returns 匹配且确实存在的资产 path 升列（保持 listAssetFiles 原 Set 插入序）
- */
-export function listGeneratedAssets(
-  assets: AssetFileInfo[],
-  prefix: string,
-): string[] {
-  return assets
-    .filter((a) => a.path.startsWith(prefix) && a.exists)
-    .map((a) => a.path)
-}
+

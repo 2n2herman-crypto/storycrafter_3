@@ -275,7 +275,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
   getDesignCompleteness: () => {
     const { assets } = get()
     const seqListContent = assets['sequence_list.md']?.content ?? ''
-    const seqIds = [...new Set(Array.from(seqListContent.matchAll(/\bS\d+-\d+\b/g), (m) => m[0]))].sort()
+    const seqIds = [...new Set(Array.from(seqListContent.matchAll(/^\| *(S\d+-\d+) *\|/gm), (m) => m[1]))].sort()
     const denominator = seqIds.length * 3
     let numerator = 0
     for (const [path, state] of Object.entries(assets)) {

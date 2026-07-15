@@ -180,8 +180,3 @@ export async function runAgentLoop(
 /** 宽泛 subagent 内部循环轮次上限（v7.3 经验值，开发方案第2.4节） */
 export const SUBAGENT_LOOP_MAX_ROUNDS = 8
 
-/**
- * 主 Orchestrator 安全轮次上限（v7.3 取消业务约束，仅防死循环，开发方案第2.5节选项B）。
- * 远高于正常对话轮次，不影响正常使用。
- */
-export const SAFETY_MAX_ROUNDS = 100

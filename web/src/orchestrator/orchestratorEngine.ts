@@ -146,52 +146,11 @@ async function safeRead(fm: FileManager, path: string): Promise<string> {
   }
 }
 
-// ===== v6.2 结构化校验桩函数（原 structuralChecks.ts 已随 scene_beats 删除，留存桩体保证旧 Pipeline 代码编译通过） =====
-// 这些函数仅被旧 runSequencePipeline/runPipelineSoftValidation 引用，
-// 旧 pipeline 代码将在后续彻底清理阶段一并删除。
-
-function checkSceneTable(_md: string): string | null { return null }
-function extractSceneIds(_md: string): Set<string> { return new Set() }
-function checkBeatBlocks(_md: string, _sc: string): string | null { return null }
-function countBeatBlocks(_md: string): number { return 0 }
-
-// ===== v6.7 Scene Beats 三段式流水线注册表（PIPELINE_REGISTRY）=====
-//
-// 当某 Subagent 出现在此注册表中，executeTool 会绕开 Skill Router 多选机制，
-// 走三段式流水线：① 建档（引擎零 LLM）② 场景表（sceneStep）③ 逐场景节拍（beatStep 循环）。
-// 空靶 = runBatchPipeline 读 sequence_list 并发铺全部序列（PIPELINE_CONCURRENCY=3 并发池）；合法靶 = runSequencePipeline 精修单序列。
-// 中间产物（场景表）**不落盘**，通过内存变量在段间传递；最终 assembleSequenceDoc 拼装落盘。
-// 对 Orche 表现为单个 round 配额消耗的一次 tool_call。
-//
-// 所有 pipeline 元信息均集中在引擎侧此常量内嵌声明：types/index.ts 与 frontmatter parser 维持不变。
-
-interface PipeStepDef {
-  /** 该步对应的 skillId（须经目录约定热插拔注册于同名 subagent 名下）*/
-  skillId: string
-  /** 注入下游上下文的短别名（与各 SKILL.md 正文引用约定保持一致）*/
-  label: string
-}
-
-interface PipeRegistryValue {
-  /** 段②：写场景表 */
-  sceneStep: PipeStepDef
-  /** 段③：逐场景循环写节拍块 */
-  beatStep: PipeStepDef
-}
-
-const PIPELINE_REGISTRY: Record<string, PipeRegistryValue> = {
-  scene_beats: {
-    sceneStep: { skillId: 'scene_designer', label: 'prev_scenes' },
-    beatStep: { skillId: 'beat_writer', label: 'target_scene' },
-  },
-}
-// 建档段①是纯引擎代码，无 skill，不进注册表。
-// v6.8 偏差③闭合：runBatchPipeline 走 runWithConcurrency 并发池（PIPELINE_CONCURRENCY=3），不再串行 for。
 
 /**
  * v6.6：极简表格数据行计数——数 `|` 起始且 `|` 结尾的行，去掉表头与分隔行。
  *
- * 仅供 runPipelineSoftValidation 做"量级越界"非阻塞软校验用；不替代 structuralChecks
+ * 仅供 buildEpisodeRangeMap 做量级评估用；不替代 structuralAudit
  * 内的 parseMarkdownTable（后者承担列数/ID 等阻塞校验，逻辑更严）。
  */
 function countTableDataRows(md: string): number {
@@ -266,46 +225,6 @@ function buildAggregatedXml(
 	return `\n\n<${aggregatedLabel}>\n${inner}\n</${aggregatedLabel}>`
 }
 
-// ===== v6.7 Scene Beats 引擎代码收口 =====
-
-/**
- * v6.7 收口：三段式完成后由引擎代码拼装 sequences/<seqId>.md 最终成品（零 LLM 调用）。
- *
- * 场景表仍是表格直接 trim；节拍段按场景用 `#### <SC-ID>` 分组，每组内是 beat_writer 产出的
- * `[BEAT ...]` 字段块。外层 `<<<SCENE_BEAT_OUTLINE_START/END>>>` + `# <seqId>` 标题保留不变
- * → 下游四 writer 的 `<current_sequence_beats>` 纯文本注入契约不破。
- *
- * @param seqId 目标序列 ID 如 'S1-1'
- * @param scenesMd scene_designer 输出的场景表（不含 START/END TAG）
- * @param sceneIds 场景表解析出的有序 SC-ID 列表
- * @param beatBySc Map<SC-ID, 节拍块 md>（失败场景为占位注释）
- * @returns 最终 sequences/<seqId>.md 的完整内容（含外层 TAG）
- */
-function assembleSequenceDoc(
-  seqId: string,
-  scenesMd: string,
-  sceneIds: string[],
-  beatBySc: Map<string, string>,
-): string {
-  const scenesTable = scenesMd.trim() // 场景仍是表格，直接 trim
-  const beatSections = sceneIds
-    .map((sc) => `#### ${sc}\n\n${(beatBySc.get(sc) ?? '').trim()}`)
-    .join('\n\n')
-  return [
-    '<<<SCENE_BEAT_OUTLINE_START>>>',
-    `# ${seqId}`,
-    '',
-    '### 场景表',
-    '',
-    scenesTable,
-    '',
-    '### 节拍',
-    '',
-    beatSections,
-    '<<<SCENE_BEAT_OUTLINE_END>>>',
-  ].join('\n')
-}
-
 
 // ===== Prompt 加载 =====
 
@@ -377,7 +296,7 @@ function compressMessages(messages: ChatCompletionMessageParam[]): ChatCompletio
  *     → 写入文件 → 继续循环
  *     → LLM 返回 stop → 输出给用户
  *   → 超限 → 强制结束
- *   → audit 循环（story_checker 最多 3 轮）与 FC 循环独立计数
+ *   → audit 循环（quality_checker 最多 3 轮）与 FC 循环独立计数
  *
  * @see product_design_v4/orchestrator调度引擎设计.md
  */
@@ -466,9 +385,7 @@ export class OrchestratorEngine {
    * v6.1 扩展点：
    *   - 第 4 可选参 options.target 承载 FC args.target_{sequence|chapter}，由 processUserInput
    *     dispatch loop 解析 JSON arguments 后透传进来。
-   *   - 若 subagent 注册于 PIPELINE_REGISTRY 则走三段式管道（空靶 runBatchPipeline 全量串行批量 /
-   *     带靶 runSequencePipeline 精修单序列）对 Orche 原子化为一次 tool_call；
-   *     否则按原有单 Skill 直发流程，其中成文 writer 经 resolveWriteTarget 计算 effectiveWrites
+   *   - 按原有单 Skill 直发流程，其中成文 writer 经 resolveWriteTarget 计算 effectiveWrites
    *     替换 placeholder 并同步喂读 <current_draft>/<current_sequence_beats>/<current_target>
    *     触发 create/refine 双模自判定。validator 业务一行未改（INV-1）。
    *
@@ -555,52 +472,20 @@ export class OrchestratorEngine {
         }
         return this.runBatchWithSubagent(subagent, instruction, seqIds)
       }
-      if (target && !TARGET_ID_REGEX.test(target)) {
-        this.emit('tool_error', {
-          toolId: subagent.id,
-          toolName: subagent.name,
-          message: `${subagent.name} 的目标序列格式非法（形如 S1-1）；留空=全量批量，填写=精修单序列`,
-        })
-        return {
-          success: false,
-          error: `目标序列格式非法：${target}`,
-          skillName: subagent.name,
+      if (target && !TARGET_ID_REGEX.test(target)) { return { success: false, error: `目标序列格式非法：${target}`, skillName: subagent.name } }
+      if (target) {
+        const normalized = normalizeToSequenceId(target)
+        const seqListMd = await safeRead(this.fileManager, 'sequence_list.md')
+        const knownIds = this.parseSequenceIds(seqListMd)
+        if (!knownIds.includes(normalized)) {
+          this.emit('tool_error', { toolId: subagent.id, toolName: subagent.name, message: `${subagent.name} 目标序列 ${normalized} 不存在于序列清单中` })
+          return { success: false, error: `目标序列 ${normalized} 不存在，请先在 sequence_list.md 中注册该序列（已有序列：${knownIds.join(', ') || '无'}）`, skillName: subagent.name }
         }
       }
       return this.runSubagentWithIsolatedContext(subagent, instruction, target ? normalizeToSequenceId(target) : undefined)
     }
 
-    // ===== v6.7 Pipeline Registry 分流（scene_beats 三段式：空靶批量 / 带靶精修）=====
-    const pipeReg = PIPELINE_REGISTRY[subagent.id]
-    if (pipeReg !== undefined) {
-      if (!target) {
-        // 空靶 = 全量批量（v6.8 并发池）
-        return this.runBatchPipeline(subagent, pipeReg, instruction, history)
-      }
-      if (!TARGET_ID_REGEX.test(target)) {
-        // 有值但非法 → 仍早退（避免误写）
-        this.emit('tool_error', {
-          toolId: subagent.id,
-          toolName: subagent.name,
-          message: `${subagent.name} 的 target_sequence 格式非法（形如 S1-1）；留空=全量批量，填写=精修单序列`,
-        })
-        return {
-          success: false,
-          error: `target_sequence 格式非法：${target}`,
-          skillName: subagent.name,
-        }
-      }
-      // 合法靶（归约后）= 精修单序列
-      return this.runSequencePipeline(
-        subagent,
-        pipeReg,
-        normalizeToSequenceId(target),
-        instruction,
-        history,
-      )
-    }
-
-    // ===== v6.9 WRITER 分流：空靶=全量并发批量 / 带靶=单序列精修（对齐 scene_beats 范式）=====
+    // ===== WRITER 分流：空靶=全量并发批量 / 带靶=单序列精修 =====
     if (WRITER_IDS.includes(subagent.id)) {
       if (!target) {
         return this.runWriterBatchPipeline(subagent, instruction, history)
@@ -649,7 +534,7 @@ export class OrchestratorEngine {
     // ④ System Prompt：角色前缀 + Skill 正文
     const systemPrompt = skill.preamble ? `${skill.preamble}\n\n${skill.body}` : skill.body
 
-    // ⑤ v6.1 resolveWriteTarget：scene_beats/writer 已被上方管道截走，此处仅设计区 Subagent 注入档案
+    // ⑤ v6.1 设计区 Subagent 注入档案
     let effectiveWrites = skill.writes
     if (this.profileLock) {
       // v6.6 设计区档案化：非 writer 的设计区 Subagent（act_map/sequence_list/
@@ -858,249 +743,8 @@ export class OrchestratorEngine {
   }
 
   /**
-   * v6.7：scene_beats Pipeline 数量软校验——场景数 / 平均每场景节拍数越出档案区间时
-   * 产出非阻塞 warning。与 runSoftValidation 同为非阻塞提示，不触发 retry。
-   *
-   * 结构红线（B-ID/内嵌 SC-ID）已由 checkBeatBlocks 阻塞校验兜底；字段齐全/词库/相邻规则
-   * 交 SKILL body 引导（v6.8 放宽，不再机械校验）；此处仅校验"量级"
-   * 是否贴合 <product_profile> 声明（如小说每章 2-6 场景、短剧每序列 8-15 集）。
-   * v6.7：场景数仍数表格行；节拍数改块计数（节拍已从整表改为逐场景字段块）。
-   */
-  private runPipelineSoftValidation(scenesMd: string, beatBySc: Map<string, string>): string[] {
-    const warnings: string[] = []
-    const profile = this.profileLock
-    if (!profile) return warnings
-
-    const sceneRows = countTableDataRows(scenesMd)
-    const [sMin, sMax] = profile.scene.countRange
-    if (sceneRows > 0 && (sceneRows < sMin || sceneRows > sMax)) {
-      warnings.push(
-        `场景数 ${sceneRows} 越出 <product_profile> 区间 [${sMin}, ${sMax}]（${profile.scene.semantic}）`,
-      )
-    }
-
-    // 节拍已改逐场景字段块，改块计数：校验"平均每场景节拍数"是否贴合 beat.countRange
-    const beatCount = [...beatBySc.values()].reduce((n, md) => n + countBeatBlocks(md), 0)
-    const avgBeats = sceneRows > 0 ? Math.round(beatCount / sceneRows) : 0
-    const [bMin, bMax] = profile.beat.countRange
-    if (avgBeats > 0 && (avgBeats < bMin || avgBeats > bMax)) {
-      warnings.push(
-        `平均每场景节拍数 ${avgBeats} 越出档案区间 [${bMin}, ${bMax}]（总 ${beatCount} 拍 / ${sceneRows} 场景）`,
-      )
-    }
-
-    return warnings
-  }
-
-  /**
-   * v6.7 单步 LLM 执行（供 runSequencePipeline 段②③复用，抽自原 runPipeline 重试块）。
-   *
-   * 读 skill.reads → assembleContext → appendExtraLabels(opts.extras) → sendMessage ×≤MAX_RETRIES
-   * → validateOutput（挂 opts.structuralCheck，INV-1 validator 主体不改）。
-   * 成功返回 extracted[skill.writes[0]]；连续失败返回 null（调用方决定 abort 或降级占位）。
-   */
-  private async runSingleStep(
-    subagent: SubagentSpec,
-    skill: SkillSpec,
-    seqId: string,
-    instruction: string,
-    history: ConversationTurn[] | undefined,
-    opts: { structuralCheck: SkillSpec['structuralCheck']; extras: ExtraLabelEntry[] },
-  ): Promise<string | null> {
-    // ① 读 static reads
-    const files: Record<string, string> = {}
-    for (const p of skill.reads) {
-      files[p] = await safeRead(this.fileManager, p)
-    }
-
-    // ② 拼 static ctx + append extras（prev_scenes/target_scene/current_target/product_profile 等）
-    const ctxFull = appendExtraLabels(assembleContext(skill.reads, files), opts.extras)
-
-    // ③ sysPrompt = 角色前缀 + Skill 正文；specView 承载临时 structuralCheck
-    const systemPrompt = skill.preamble ? `${skill.preamble}\n\n${skill.body}` : skill.body
-    const specView: SkillSpec = { ...skill, structuralCheck: opts.structuralCheck }
-
-    let userContent = buildAgentPrompt(ctxFull, instruction, history)
-
-    // ④ sendMessage ×≤MAX_RETRIES + validateOutput(specView)
-    let ok = false
-    let stepContent = ''
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      try {
-        const out = await this.sendWithRateLimit(
-          { toolId: subagent.id, toolName: subagent.name, skillId: skill.skillId, skillName: skill.name },
-          systemPrompt, userContent,
-        )
-        const vr = validateOutput(out, specView)
-        if (vr.valid) {
-          stepContent = vr.extracted[skill.writes[0]] ?? ''
-          ok = true
-          break
-        }
-        if (attempt < MAX_RETRIES - 1) {
-          this.emit('tool_retry', {
-            toolId: subagent.id,
-            toolName: subagent.name,
-            skillId: skill.skillId,
-            skillName: skill.name,
-            attempt: attempt + 1,
-            maxAttempts: MAX_RETRIES,
-            message: `${subagent.name}[${seqId}/${skill.skillId}] 格式错误重试 ${attempt + 1}/${MAX_RETRIES}`,
-          })
-          const feedback = vr.structuralError
-            ? `⚠️ 结构错误：${vr.structuralError}`
-            : `⚠️ 格式错误：输出须包含 ${specView.outputTags[0]} 与 ${specView.outputTags[1]} 包裹，请严格遵循模板再次生成。`
-          userContent = `${userContent}\n\n---\n${feedback}`
-        }
-      } catch {
-        if (attempt === MAX_RETRIES - 1) break
-      }
-    }
-
-    return ok ? stepContent : null
-  }
-
-  /**
-   * v6.7 统一附加标签：<current_target>(priorDraft baseline) + <product_profile>。
-   * 供段②场景表与段③逐场景节拍复用，两段的 REFINE 判定据 <current_target> 一致命中。
-   */
-  private designExtras(priorDraft: string): ExtraLabelEntry[] {
-    const extras: ExtraLabelEntry[] = []
-    if (priorDraft.length > 0) {
-      extras.push({ label: 'current_target', content: priorDraft })
-    }
-    if (this.profileLock) {
-      extras.push({ label: 'product_profile', content: renderProductProfileXml(this.profileLock) })
-    }
-    return extras
-  }
-
-  /**
-   * v6.7 单序列三段式流水线（精修入口 / 批量循环体）。
-   *
-   * ① 建档（0 LLM）：先落骨架占位，UI 立即出现卡片；
-   * ② 场景表（1 LLM，checkSceneTable）：沿用 7 列表格，失败即 abort；
-   * ③ 逐场景节拍（每场景 1 LLM，checkBeatBlocks）：引擎按场景 ID 遍历，单场景失败降级占位不阻断。
-   * 收口 assembleSequenceDoc 覆写落盘 + 数量软校验。
-   */
-  private async runSequencePipeline(
-    subagent: SubagentSpec,
-    pipe: PipeRegistryValue,
-    seqId: string,
-    instruction: string,
-    history?: ConversationTurn[],
-  ): Promise<ToolResult> {
-    const subSkills = getSkills(subagent.id)
-    const sceneSkill = subSkills.find((s) => s.skillId === pipe.sceneStep.skillId)
-    const beatSkill = subSkills.find((s) => s.skillId === pipe.beatStep.skillId)
-    if (!sceneSkill || !beatSkill) {
-      return {
-        success: false,
-        error: `[${subagent.id}] 流水线配置异常：未找到 scene/beat skill`,
-        skillName: subagent.name,
-      }
-    }
-    const finalPath = `sequences/${seqId}.md`
-    const priorDraft = await safeRead(this.fileManager, finalPath) // REFINE baseline
-
-    // ① 建档：先落骨架占位，让 UI 立刻出现卡片
-    await this.fileManager.writeFile(finalPath, this.buildSequenceSkeleton(seqId))
-
-    // ② 场景表（1 次 LLM，checkSceneTable）
-    const scenesMd = await this.runSingleStep(subagent, sceneSkill, seqId, instruction, history, {
-      structuralCheck: (x) => checkSceneTable(x),
-      extras: this.designExtras(priorDraft),
-    })
-    if (scenesMd == null) return this.pipelineFail(subagent, seqId, '场景表', finalPath)
-
-    // ③ 逐场景节拍（每场景 1 次 LLM，checkBeatBlocks）
-    const sceneIds = [...extractSceneIds(scenesMd)]
-    const beatBySc = new Map<string, string>()
-    for (const sc of sceneIds) {
-      const blockMd = await this.runSingleStep(subagent, beatSkill, seqId, instruction, history, {
-        structuralCheck: (x) => checkBeatBlocks(x, sc),
-        extras: [
-          { label: 'prev_scenes', content: scenesMd },
-          { label: 'target_scene', content: this.sliceSceneRow(scenesMd, sc) },
-          ...this.designExtras(priorDraft),
-        ],
-      })
-      beatBySc.set(sc, blockMd ?? `<!-- 待补节拍 ${sc}（生成失败） -->`) // 降级不阻断
-    }
-
-    // 收口：拼装覆写落盘
-    const finalMd = assembleSequenceDoc(seqId, scenesMd, sceneIds, beatBySc)
-    await this.fileManager.writeFile(finalPath, finalMd)
-
-    const softWarnings = this.runPipelineSoftValidation(scenesMd, beatBySc)
-    return {
-      success: true,
-      writes: [finalPath],
-      output: '',
-      skillId: beatSkill.skillId,
-      skillName: beatSkill.name,
-      warnings: softWarnings.length > 0 ? softWarnings : undefined,
-    }
-  }
-
-  /**
-   * v6.7 全序列串行批量：读 sequence_list.md 解析全部序列 ID，for...await 串行跑
-   * runSequencePipeline（偏差③并行本次不做），汇总为单 ToolResult 对 Orche 原子化。
-   */
-  private async runBatchPipeline(
-    subagent: SubagentSpec,
-    pipe: PipeRegistryValue,
-    instruction: string,
-    history?: ConversationTurn[],
-  ): Promise<ToolResult> {
-    const seqListMd = await safeRead(this.fileManager, 'sequence_list.md')
-    const seqIds = this.parseSequenceIds(seqListMd)
-    if (seqIds.length === 0) {
-      return {
-        success: false,
-        error: '未能从 sequence_list.md 解析出任何序列 ID，请先生成序列清单',
-        skillName: subagent.name,
-      }
-    }
-
-    this.emit('tool_start', {
-      toolId: subagent.id,
-      toolName: subagent.name,
-      message: `并发批量铺设 ${seqIds.length} 个序列（并发 ${BATCH_CONCURRENCY}）`,
-    })
-
-    // v6.8 并发池（偏差③闭合：串行 for → runWithConcurrency），汇总逻辑按下标对齐不变
-    const results = await this.runWithConcurrency(seqIds, BATCH_CONCURRENCY,
-      (seqId) => this.runSequencePipeline(subagent, pipe, seqId, instruction, history))
-
-    // 汇总
-    const writes: string[] = []
-    const warnings: string[] = []
-    let okCount = 0
-    results.forEach((r, i) => {
-      if (r.success) {
-        okCount++
-        if (r.writes) writes.push(...r.writes)
-        if (r.warnings) warnings.push(...r.warnings)
-      } else {
-        warnings.push(`序列 ${seqIds[i]} 失败：${r.error}`)
-      }
-    })
-
-    return {
-      success: okCount > 0,
-      writes,
-      output: '',
-      skillId: pipe.beatStep.skillId,
-      skillName: subagent.name,
-      error: okCount === 0 ? '全部序列生成失败' : undefined,
-      warnings: warnings.length > 0 ? warnings : undefined,
-    }
-  }
-
-  /**
    * v6.8 有界并发池：最多 limit 个 worker 同时跑，超出排队。
-   * out[i] 与 items[i] 下标对齐（无论完成顺序），保证 runBatchPipeline 汇总 seqIds[i] 正确。
+   * out[i] 与 items[i] 下标对齐（无论完成顺序），保证 runWriterBatchPipeline 汇总 seqIds[i] 正确。
    */
   private async runWithConcurrency<T, R>(
     items: T[], limit: number, worker: (item: T) => Promise<R>,
@@ -1143,26 +787,6 @@ export class OrchestratorEngine {
     throw new Error('unreachable')
   }
 
-  /** v6.7 段②/③失败收口：返回中断位点指示的失败 ToolResult（骨架已落盘，UI 卡片保留） */
-  private pipelineFail(
-    subagent: SubagentSpec,
-    seqId: string,
-    stage: string,
-    finalPath: string,
-  ): ToolResult {
-    this.emit('tool_error', {
-      toolId: subagent.id,
-      toolName: subagent.name,
-      message: `${subagent.name}[${seqId}] 在「${stage}」阶段连续失败，流水线中止`,
-    })
-    return {
-      success: false,
-      error: `序列 ${seqId} 在「${stage}」阶段生成失败`,
-      writes: [finalPath],
-      skillName: subagent.name,
-    }
-  }
-
   /** v6.7 从 sequence_list.md 扫全部序列 ID（S{幕}-{序}），去重排序 */
   private parseSequenceIds(seqListMd: string): string[] {
     const set = new Set<string>()
@@ -1170,11 +794,6 @@ export class OrchestratorEngine {
     let m: RegExpExecArray | null
     while ((m = re.exec(seqListMd)) !== null) set.add(m[0])
     return [...set].sort()
-  }
-
-  /** v6.7 建档骨架：带标题占位，让 UI 立即出现卡片 */
-  private buildSequenceSkeleton(seqId: string): string {
-    return `<<<SCENE_BEAT_OUTLINE_START>>>\n# ${seqId}\n\n### 场景表\n\n*（生成中…）*\n\n### 节拍\n\n*（生成中…）*\n<<<SCENE_BEAT_OUTLINE_END>>>`
   }
 
   /** v6.9 成文建档骨架：用 writer 自身 outputTags 包裹（四 writer tag 各异，动态取），UI 立即出现卡片 */
@@ -1745,13 +1364,51 @@ export class OrchestratorEngine {
       }
     }
 
-    const extracted = validation.extracted[writePath]
+    let extracted = validation.extracted[writePath]
     if (!extracted) {
       return {
         success: false,
         error: `TAG 校验通过但未提取到 ${writePath} 内容`,
         skillId: targetSkill.skillId,
         skillName: targetSkill.name,
+      }
+    }
+
+    // v7.5：目标序列内容校验——确保提取出的内容属于目标序列，而非 LLM 输出的其他序列的内容。
+    // 当 LLM 在 agent loop 中读到多个序列文件时，可能误将所有序列的第一段 TAG 块排在前面，
+    // 导致 extractBetween 取到的第一个 START/END 块是错误序列的。
+    if (target && targetSkill.outputTags[0] && targetSkill.outputTags[1]) {
+      const [startTag, endTag] = targetSkill.outputTags
+      const seqIdInContent = extracted.match(/#\s*(S\d+-\d+)/)
+      if (seqIdInContent && seqIdInContent[1] !== target) {
+        // 内容中出现的序列 ID 与目标不一致→尝试根据目标序列 ID 在 finalText 中重定位正确段
+        const targetStart = `# ${target}`
+        const searchFrom = finalText.indexOf(startTag)
+        if (searchFrom >= 0) {
+          // 从 startTag 往后找目标序列标题
+          const titleIdx = finalText.indexOf(targetStart, searchFrom)
+          if (titleIdx >= 0) {
+            // 从标题位置往回找到最近的 startTag，从此处开始提取
+            const sectionStart = finalText.lastIndexOf(startTag, titleIdx)
+            if (sectionStart >= 0) {
+              const contentStart = sectionStart + startTag.length
+              const endIdx = finalText.indexOf(endTag, contentStart)
+              if (endIdx > sectionStart) {
+                extracted = finalText.slice(contentStart, endIdx).trim()
+              }
+            }
+          }
+        }
+        // 重定位后再次验证
+        const reCheck = extracted.match(/#\s*(S\d+-\d+)/)
+        if (!reCheck || reCheck[1] !== target) {
+          return {
+            success: false,
+            error: `产出内容与目标序列 ${target} 不匹配（内容中序列 ID 为 ${seqIdInContent[1]}，目标为 ${target}），已重试仍无法纠正`,
+            skillId: targetSkill.skillId,
+            skillName: targetSkill.name,
+          }
+        }
       }
     }
 
@@ -1807,12 +1464,6 @@ export class OrchestratorEngine {
       error: okCount === 0 ? '全部序列执行失败' : undefined,
       warnings: warnings.length > 0 ? warnings : undefined,
     }
-  }
-
-  /** v6.7 从场景表抽 sc 那一行原样（供 <target_scene> 精准注入，模型只看这一个场景） */
-  private sliceSceneRow(scenesMd: string, sc: string): string {
-    const line = scenesMd.split(/\r?\n/).find((l) => l.includes(sc))
-    return line ? line.trim() : sc
   }
 
   /** v7.4：非关键收尾。失败只进入最终总结 warning，不再阻塞或吞掉用户结果。 */
@@ -2133,7 +1784,7 @@ export class OrchestratorEngine {
             }
 
             // 执行 Subagent（history 仅 analyzer 前置预跑需要；第 4 可选项承载动态靶供
-            // executeTool 内 resolveWriteTarget / runSequencePipeline 消费）
+            // executeTool 内 resolveWriteTarget 消费）
             this.emit('tool_start', {
               toolId: subagentSpec.id,
               toolName: subagentSpec.name,

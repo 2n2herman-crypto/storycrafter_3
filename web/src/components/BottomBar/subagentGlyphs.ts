@@ -12,15 +12,8 @@ export const SUBAGENT_REASON: Record<string, string> = {
   characters: '设计角色与人物关系',
   act_map: '规划幕级结构与剧情走向',
   sequence_list: '拆解序列清单与戏剧节奏',
-  scene_beats: '铺设场景与节拍细节',
   foreshadowing_tracker: '规划伏笔的铺设与回收',
   subplot_manager: '管理支线的开辟与合并',
-  story_checker: '审查故事一致性与结构完整性',
-  novel_writer: '展开小说正文',
-  screenplay_writer: '展开剧本正文',
-  long_drama_writer: '展开长剧正文',
-  short_drama_writer: '展开短剧正文',
-  reset_all: '重置全部故事资产',
 }
 
 /** subagentId → 单字图形图标（非 emoji，保持紧凑的单字标识风格） */
@@ -29,15 +22,8 @@ export const SUBAGENT_GLYPH: Record<string, string> = {
   characters: '角',
   act_map: '幕',
   sequence_list: '序',
-  scene_beats: '场',
   foreshadowing_tracker: '伏',
   subplot_manager: '支',
-  story_checker: '查',
-  novel_writer: '写',
-  screenplay_writer: '写',
-  long_drama_writer: '写',
-  short_drama_writer: '写',
-  reset_all: '重',
 }
 
 /** 查表 + 兜底：未登记的 subagentId 回退为 toolName 本身 */

@@ -48,7 +48,7 @@ async function readNonEmptyFiles(
 }
 
 function parseSequenceIds(sequenceList: string): string[] {
-  return [...new Set(Array.from(sequenceList.matchAll(/\bS\d+-\d+\b/g), (m) => m[0]))].sort()
+  return [...new Set(Array.from(sequenceList.matchAll(/^\| *(S\d+-\d+) *\|/gm), (m) => m[1]))].sort()
 }
 
 /**
@@ -66,9 +66,7 @@ export async function buildProjectStatusSnapshot(
   const inspectedPaths = existingPaths.filter(
     (path) =>
       CORE_MODULES.some(([, corePath]) => corePath === path) ||
-      path.startsWith('sequences/') ||
-      path.startsWith('scenes/') ||
-      path.startsWith('beats/'),
+      path.startsWith('sequences/'),
   )
   const contents = await readNonEmptyFiles(fileManager, inspectedPaths)
   const isReady = (path: string) => contents.has(path)
@@ -87,20 +85,9 @@ export async function buildProjectStatusSnapshot(
   ]
 
   const sequenceIds = parseSequenceIds(contents.get('sequence_list.md') ?? '')
-  const hasModernLayers = existingPaths.some(
-    (path) => path.startsWith('scenes/') || path.startsWith('beats/'),
-  )
-  const completedSequences = sequenceIds.filter((id) => {
-    if (hasModernLayers) {
-      return [
-        `sequences/${id}.md`,
-        `scenes/${id}.md`,
-        `beats/${id}.md`,
-      ].every(isReady)
-    }
-    // 兼容 v7.2 及更早版本：当时场景与节拍合并存放在 sequences/<ID>.md。
-    return isReady(`sequences/${id}.md`)
-  }).length
+  const completedSequences = sequenceIds.filter((id) =>
+    isReady(`sequences/${id}.md`),
+  ).length
   const sceneBeatComplete = sequenceIds.length > 0 && completedSequences === sequenceIds.length
   modules.push({
     label: '场景节拍',

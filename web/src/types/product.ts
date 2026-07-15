@@ -153,12 +153,6 @@ export const PRODUCT_PROFILES: Record<ProductKind, ProductProfile> = {
 /** 全部成文 writer 的 Subagent id（供 FC 裁剪 / Phase 判定 / target 协议统一引用）*/
 export const WRITER_IDS: readonly string[] = Object.values(PRODUCT_PROFILES).map((p) => p.writerSubagentId)
 
-/** 防御性默认校验集（profileLock 缺失时回退；正常流程 profileLock 必非 null）*/
-export const DEFAULT_VALIDATION_SET: ValidationSet = {
-  beatTypeVocab: ['铺垫', '触发', '对抗', '转折', '收束'],
-  enforceAdjacentTypeRule: true,
-}
-
 /**
  * 将 ProductProfile 渲染为注入给 Subagent 的 <product_profile> XML 区段。
  *

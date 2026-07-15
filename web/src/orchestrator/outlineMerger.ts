@@ -28,12 +28,12 @@ async function safeRead(fm: FileManager, path: string): Promise<string> {
   }
 }
 
-/** 从 sequence_list.md 文本解析全部序列 ID */
+/** 从 sequence_list.md 表格行解析全部序列 ID */
 export function parseSequenceIds(seqListMd: string): string[] {
   const set = new Set<string>()
-  const re = /\bS\d+-\d+\b/g
+  const re = /^\| *(S\d+-\d+) *\|/gm
   let m: RegExpExecArray | null
-  while ((m = re.exec(seqListMd)) !== null) set.add(m[0])
+  while ((m = re.exec(seqListMd)) !== null) set.add(m[1])
   return [...set].sort()
 }
 
@@ -130,7 +130,7 @@ function buildSequenceOutline(
   // 场景与节拍按 ID 匹配嵌入
   for (const [scTitle, scBody] of sceneSections) {
     // 从标题中提取 SC-ID
-    const scIdMatch = scTitle.match(/SC-[A-Z]\d+-\d+-\d{1,2}/)
+    const scIdMatch = scTitle.match(/SC-[A-Z0-9]+-\d+-\d{1,2}/)
     void scIdMatch // 保留正则匹配作为格式校验，后续扩展时可复用
 
     parts.push(`## ${scTitle}`)

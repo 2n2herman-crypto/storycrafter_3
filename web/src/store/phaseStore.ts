@@ -21,7 +21,7 @@ export type StoryPhase = 'designing' | 'writing'
 /**
  * 固定的六项静态锁定资产。
  *
- * 注：不含 user_requirements.md（元数据始终可更新）、_check_report.md/draft_history.md/chapters/*
+ * 注：不含 user_requirements.md（元数据始终可更新）、chapters/*
  * （写作期产物本身就该可写）。
  */
 export const LOCKED_STATIC_PATHS = [
@@ -33,8 +33,8 @@ export const LOCKED_STATIC_PATHS = [
   'subplots.md',
 ] as readonly string[]
 
-/** v7.3：三前缀动态锁定——序列/场景/节拍三层文件拆分后一并纳入冻结集 */
-const DYNAMIC_LOCKED_PREFIXES = ['sequences/', 'scenes/', 'beats/'] as const
+/** 动态锁定——序列层文件纳入冻结集 */
+const DYNAMIC_LOCKED_PREFIXES = ['sequences/'] as const
 
 interface PhaseState {
   phase: StoryPhase
@@ -144,14 +144,12 @@ export const usePhaseStore = create<PhaseState>((set, get) => ({
     return s.baselines[path]
   },
 
-  /** v7.3：将 seqId 的三个层文件加入锁定集，不改变 phase */
+  /** v7.3：将 seqId 的序列文件加入锁定集，不改变 phase */
   lockSequenceFiles(seqId: string) {
     set((state) => ({
       lockedSequencePaths: new Set([
         ...state.lockedSequencePaths,
         `sequences/${seqId}.md`,
-        `scenes/${seqId}.md`,
-        `beats/${seqId}.md`,
       ]),
     }))
   },

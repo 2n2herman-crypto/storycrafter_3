@@ -11,8 +11,8 @@
  *   3. 节拍满足场景：场景层文件里的每个场景 ID 是否在节拍层有对应节拍块
  */
 
-/** 场景 ID 正则：SC-{序列ID}-{nn}，与 structuralChecks.ts 的字面保持一致的独立定义 */
-const SCENE_ID_REGEX = /^SC-[A-Z]\d+-\d+-\d{1,2}$/
+/** 场景 ID 正则：SC-{序列ID}-{nn}，兼容 SC-S1-1-01 和 SC-3-1-01 两种格式（LLM 有时掉 S 前缀） */
+const SCENE_ID_REGEX = /^SC-[A-Z0-9]+-\d+-\d{1,2}$/
 
 export interface StructuralIssue {
   level: '序列满足幕' | '场景满足序列' | '节拍满足场景'
@@ -313,7 +313,7 @@ function extractActIds(md: string): string[] {
 /** 从 Markdown ## 标题中提取场景 ID */
 function extractSceneIdsFromMd(md: string): string[] {
   const ids: string[] = []
-  const re = /^##\s+(SC-[A-Z]\d+-\d+-\d{1,2})\b/gm
+  const re = /^##\s+(SC-[A-Z0-9]+-\d+-\d{1,2})\b/gm
   let m: RegExpExecArray | null
   while ((m = re.exec(md)) !== null) {
     ids.push(m[1])
@@ -324,7 +324,7 @@ function extractSceneIdsFromMd(md: string): string[] {
 /** 从节拍文件 Markdown 中提取所有节拍块引用的场景 ID（去重集合） */
 function extractBeatSceneIdsFromMd(md: string): Set<string> {
   const ids = new Set<string>()
-  const re = /B-(SC-[A-Z]\d+-\d+-\d{1,2})-\d+/g
+  const re = /B-(SC-[A-Z0-9]+-\d+-\d{1,2})-\d+/g
   let m: RegExpExecArray | null
   while ((m = re.exec(md)) !== null) {
     ids.add(m[1])

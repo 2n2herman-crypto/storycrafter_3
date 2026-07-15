@@ -18,7 +18,7 @@ export const READ_FILE_TOOL: ChatCompletionTool = {
   function: {
     name: 'read_file',
     description:
-      '读取一个已知资产文件的完整内容。path 为资产文件路径，如 sequences/S1-1.md、scenes/S1-1.md、characters.md 等。',
+      '读取一个已知资产文件的完整内容。path 为资产文件路径，如 sequences/S1-1.md、characters.md 等。',
     parameters: {
       type: 'object',
       properties: {

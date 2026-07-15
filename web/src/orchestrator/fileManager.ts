@@ -63,8 +63,7 @@ export class InMemoryFileManager implements FileManager {
    *
    * 双维护 files Map 与 knownAssetPaths Set 二者，
    * 防 clearFile 只清前者导致 listAssetFiles 反复吐 exists:false 幽灵条目污染 UI 卡片面板。
-   * v6.1 主要用途:scene_beats pipeline assemble 成功后回收 _seq/<ID>/*.md 临件;
-   * v6.2 起 scene_beats 已改为内存传递不产临件,本接口不再被引擎自动调用,保留供未来场景。
+   * v6.2 起 scene_beats 已改为内存传递不产临件,接口保留供未来场景使用。
    */
   async clearByPrefix(prefix: string): Promise<void> {
     const matched = Array.from(this.knownAssetPaths).filter((p) =>
@@ -105,10 +104,7 @@ export const DEFAULT_ASSET_PATHS = [
   'characters.md',
   'act_map.md',
   'sequence_list.md',
-  'scene_beat_outline.md',
   'foreshadowing.md',
   'subplots.md',
   'user_requirements.md',
-  '_check_report.md',
-  'draft_history.md',
 ]
