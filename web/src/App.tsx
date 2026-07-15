@@ -122,8 +122,13 @@ function App() {
       const hydratedProject = await updateProject(persistedProject.id, {
         productKind,
         phase: restoredPhase,
+        stageProposalPending: persistedProject.stageProposalPending ?? false,
       })
-      await initChatStore(engine, persistedProject.id)
+      await initChatStore(
+        engine,
+        persistedProject.id,
+        hydratedProject.stageProposalPending ?? false,
+      )
       setProjects((prev) => prev.map((p) => (p.id === hydratedProject.id ? hydratedProject : p)))
       setCurrentProject(hydratedProject)
       setFileManager(fm)
