@@ -25,7 +25,11 @@ interface ChatStore {
   /** v6.6：当前锁定的产品方向（null=未选产品，UI 须先引导选择）*/
   product: ProductKind | null
 
-  init: (engine: OrchestratorEngine, projectId: string | null) => Promise<void>
+  init: (
+    engine: OrchestratorEngine,
+    projectId: string | null,
+    stageProposalPending?: boolean,
+  ) => Promise<void>
   sendMessage: (content: string) => Promise<void>
   addMessage: (msg: ChatMessage) => void
   clearMessages: () => void
@@ -76,7 +80,7 @@ function truncateHistoryContent(content: string, maxChars: number): string {
   return `${content.slice(0, headChars)}${marker}${content.slice(-tailChars)}`
 }
 
-/** v7.1 改动3：生成一张待选的 StageCard 提问消息（对话流内渲染，不持久化——交互 UI 态） */
+/** v7.4：生成项目级待选 StageCard；卡片内容不进聊天记录，pending 状态写项目 metadata。 */
 function createStageProposalMessage(): ChatMessage {
   return {
     id: nextId(),
@@ -118,7 +122,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   isLogExpanded: false,
   product: null,
 
-  init: async (engine: OrchestratorEngine, projectId: string | null) => {
+  init: async (
+    engine: OrchestratorEngine,
+    projectId: string | null,
+    stageProposalPending = false,
+  ) => {
     _engine = engine
     _projectId = projectId ?? null
     // 重置 state（首次 init / 切项目都走此路径）
@@ -133,7 +141,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (_projectId) {
       try {
         const history = await loadChat(_projectId)
-        set({ messages: history.messages })
+        const messages = [...history.messages]
+        if (
+          stageProposalPending &&
+          !messages.some((m) => m.kind === 'stage_proposal' && m.stageState === 'pending')
+        ) {
+          messages.push(createStageProposalMessage())
+        }
+        set({ messages })
       } catch (e) {
         console.error('[chatStore] 加载对话历史失败', e)
       }
@@ -210,6 +225,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         )
         if (!hasPendingCard) {
           set((state) => ({ messages: [...state.messages, createStageProposalMessage()] }))
+          if (_projectId) {
+            try {
+              await updateProject(_projectId, { stageProposalPending: true })
+            } catch (e) {
+              console.error('[chatStore] 持久化待选阶段卡失败', e)
+            }
+          }
         }
       }
     } catch (error) {
@@ -225,12 +247,27 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       // v6.6：同步产品锁定状态（reset_all 执行后会释放 profileLock，UI 须感知）
       const product = _engine?.getProfile()?.kind ?? null
       const phase = usePhaseStore.getState().phase
-      set({ isProcessing: false, product })
-      // v7.4：覆盖 reset_all 等引擎内状态变更，保证重启后 profile/phase 可恢复。
+      set((state) => ({
+        isProcessing: false,
+        product,
+        // reset_all 会释放产品锁并清空资产，同时撤销当前项目的待选阶段卡。
+        messages: product === null
+          ? state.messages.filter(
+              (m) => !(m.kind === 'stage_proposal' && m.stageState === 'pending'),
+            )
+          : state.messages,
+      }))
+      // v7.4：覆盖 reset_all 等引擎内状态变更，保证重启后 profile/phase/待选卡可恢复。
       if (_projectId) {
-        void updateProject(_projectId, { productKind: product, phase }).catch((e) =>
-          console.error('[chatStore] 持久化项目运行状态失败', e),
-        )
+        try {
+          await updateProject(_projectId, {
+            productKind: product,
+            phase,
+            ...(product === null ? { stageProposalPending: false } : {}),
+          })
+        } catch (e) {
+          console.error('[chatStore] 持久化项目运行状态失败', e)
+        }
       }
     }
   },
@@ -298,7 +335,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     }
     if (_projectId) {
       try {
-        await updateProject(_projectId, { phase: usePhaseStore.getState().phase })
+        await updateProject(_projectId, {
+          phase: usePhaseStore.getState().phase,
+          stageProposalPending: false,
+        })
       } catch (e) {
         console.error('[chatStore] 持久化创作阶段失败', e)
       }
