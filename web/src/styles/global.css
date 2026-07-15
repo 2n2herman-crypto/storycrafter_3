@@ -1,8 +1,4 @@
 :root {
-  /* v7.4：整体工作台约缩小 1/3；inverse 用于补偿根节点逻辑视口 */
-  --ui-scale: 0.68;
-  --ui-scale-inverse: 1.4705882353;
-
   /* v8 深绛红黑主题（V5 LITERARY 调色 + V6 圆角 + V8 深绛画布级联后的最终可见值） */
   --color-bg-primary: #170a0e; /* 画布：深绛黑（body 底色） */
   --color-bg-secondary: #f2eee5; /* paper */
@@ -76,12 +72,9 @@ body {
 }
 
 #root {
-  /* 避免依赖兼容性尚不完整的 CSS calc 乘法语法。 */
-  width: 147.05882353vw;
-  height: 147.05882353vh;
+  height: 100%;
+  width: 100%;
   overflow: hidden;
-  transform: scale(var(--ui-scale));
-  transform-origin: top left;
 }
 
 body {
