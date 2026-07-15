@@ -16,12 +16,61 @@ import { usePhaseStore } from './store/phaseStore'
 import { InMemoryFileManager, DEFAULT_ASSET_PATHS } from './orchestrator/fileManager'
 import type { FileManager } from './orchestrator/fileManager'
 import { HttpFileManager } from './api/assets'
-import { listProjects, createProject, deleteProject, type ProjectMeta } from './api/projects'
+import {
+  listProjects,
+  createProject,
+  deleteProject,
+  getProject,
+  updateProject,
+  type ProjectMeta,
+} from './api/projects'
+import type { ProductKind } from './types/product'
 import { LLMClient } from './llm/client'
 import { OrchestratorEngine } from './orchestrator/orchestratorEngine'
 import { loadUserSkills } from './skills/skillLoader'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { SettingsPage } from './pages/Settings/SettingsPage'
+
+/**
+ * v7.4：旧项目 metadata 没有 productKind/phase 时的一次性迁移。
+ * 优先用正文命名识别长短剧，再从核心资产中的明确产品词回退识别；
+ * phase 仅在已有正文时推断为 writing，避免仅完成设计稿就被误锁。
+ */
+async function inferLegacyRuntimeState(
+  fm: FileManager,
+): Promise<{ productKind: ProductKind | null; phase: 'designing' | 'writing' }> {
+  const files = await fm.listAssetFiles()
+  const paths = files.filter((f) => f.exists).map((f) => f.path)
+  const hasShortDramaChapters = paths.some((p) => /^chapters\/E\d+-E\d+\.md$/.test(p))
+  const hasLongDramaChapters = paths.some((p) => /^chapters\/E\d+\.md$/.test(p))
+  const hasChapters = paths.some((p) => p.startsWith('chapters/'))
+
+  let productKind: ProductKind | null = hasShortDramaChapters
+    ? 'short_drama'
+    : hasLongDramaChapters
+      ? 'long_drama'
+      : null
+
+  if (!productKind) {
+    const samples = await Promise.all(
+      ['user_requirements.md', 'act_map.md', 'sequence_list.md'].map(async (path) => {
+        try {
+          return await fm.readFile(path)
+        } catch {
+          return ''
+        }
+      }),
+    )
+    const corpus = samples.join('\n').slice(0, 24_000)
+    const explicitType = '(?:产品方向|创作模式|产品类型|类型)[^\\n]{0,12}'
+    if (new RegExp(`${explicitType}短剧|短剧脚本`).test(corpus)) productKind = 'short_drama'
+    else if (new RegExp(`${explicitType}长剧|长剧脚本`).test(corpus)) productKind = 'long_drama'
+    else if (new RegExp(`${explicitType}(?:电影)?剧本|电影剧本`).test(corpus)) productKind = 'screenplay'
+    else if (new RegExp(`${explicitType}小说`).test(corpus)) productKind = 'novel'
+  }
+
+  return { productKind, phase: hasChapters ? 'writing' : 'designing' }
+}
 
 function App() {
   const [isReady, setIsReady] = useState(false)
@@ -45,15 +94,43 @@ function App() {
   const switchProject = useCallback(
     async (project: ProjectMeta) => {
       setIsReady(false)
-      const fm = new HttpFileManager(project.id)
+      // 项目列表可能是旧快照；切换前重新读取 metadata，保证同会话内切回来也拿到最新运行状态。
+      const persistedProject = await getProject(project.id)
+      const fm = new HttpFileManager(persistedProject.id)
       const llm = new LLMClient()
       const engine = new OrchestratorEngine(llm, fm)
-      // 切项目回设计期空状态，避免上个项目的 phase/选中卡残留
+
+      const legacy = await inferLegacyRuntimeState(fm)
+      const productKind = persistedProject.productKind ?? legacy.productKind
+      let restoredPhase = persistedProject.phase ?? legacy.phase
+
+      if (productKind) engine.lockProfile(productKind)
+
+      // 先清掉上一个项目的 UI/Phase 内存，再从当前项目 metadata + 资产重建。
       useUIStore.getState().reset()
       usePhaseStore.getState().reset()
       await initAssetStore(fm)
-      await initChatStore(engine, project.id)
-      setCurrentProject(project)
+      if (restoredPhase === 'writing') {
+        try {
+          await usePhaseStore.getState().lock(fm)
+        } catch (e) {
+          console.warn('[App] 写作期恢复失败，已安全回退设计期', e)
+          restoredPhase = 'designing'
+        }
+      }
+
+      const stageProposalPending =
+        productKind !== null &&
+        restoredPhase === 'designing' &&
+        (persistedProject.stageProposalPending ?? false)
+      const hydratedProject = await updateProject(persistedProject.id, {
+        productKind,
+        phase: restoredPhase,
+        stageProposalPending,
+      })
+      await initChatStore(engine, persistedProject.id, stageProposalPending)
+      setProjects((prev) => prev.map((p) => (p.id === hydratedProject.id ? hydratedProject : p)))
+      setCurrentProject(hydratedProject)
       setFileManager(fm)
       setIsReady(true)
     },
@@ -148,6 +225,7 @@ function App() {
       onSelect={setSelectedCard}
       wordExportAvailable={currentProject !== null}
       fileManager={fileManager}
+      projectId={currentProject?.id}
     />,
     <CurrentPanel
       filename={selectedLabel}

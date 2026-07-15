@@ -9,6 +9,7 @@ import { mergeAllSequenceOutlines, mergeSingleSequenceOutline, type MergeResult 
 import type { FileManager } from '../../orchestrator/fileManager'
 import { buildAllMarkdown, downloadText, triggerDownload } from '../../utils/exportMd'
 import { exportDocx } from '../../api/importExport'
+import { updateProject } from '../../api/projects'
 import styles from './AssetCardPanel.module.css'
 
 interface AssetCardPanelProps {
@@ -19,6 +20,8 @@ interface AssetCardPanelProps {
   wordExportAvailable?: boolean
   /** v7.3：设计→写作触发链路需要直接操作 FileManager（合并落盘），设计期才传入 */
   fileManager?: FileManager | null
+  /** v7.4：进入写作模式后同步持久化项目阶段 */
+  projectId?: string
 }
 
 /** 分组后的卡片列表 */
@@ -191,6 +194,7 @@ function CollapsibleSection({
 
 interface DesignCompletenessBarProps {
   fileManager: FileManager | null | undefined
+  projectId?: string
 }
 
 /**
@@ -198,7 +202,7 @@ interface DesignCompletenessBarProps {
  * 分子=已落盘非空的 sequences/scenes/beats 文件数，分母=序列数×3；满值后按钮可点，
  * 点击→确认弹窗→逐序列机械合并+锁定→整体 phaseStore.lock() 切写作模式。
  */
-function DesignCompletenessBar({ fileManager }: DesignCompletenessBarProps) {
+function DesignCompletenessBar({ fileManager, projectId }: DesignCompletenessBarProps) {
   const { numerator, denominator, seqIds } = useAssetStore((s) => s.getDesignCompleteness())
   const [merging, setMerging] = useState(false)
   const [mergeResult, setMergeResult] = useState<MergeResult | null>(null)
@@ -221,6 +225,7 @@ function DesignCompletenessBar({ fileManager }: DesignCompletenessBarProps) {
       }
       if (result.succeeded.length > 0) {
         await usePhaseStore.getState().lock(fileManager)
+        if (projectId) await updateProject(projectId, { phase: 'writing' })
         await useAssetStore.getState().refreshAllFiles()
       }
     } catch (e) {
@@ -366,6 +371,7 @@ export function AssetCardPanel({
   onSelect,
   wordExportAvailable,
   fileManager,
+  projectId,
 }: AssetCardPanelProps) {
   const sections = groupBySection(cards)
   const phase = usePhaseStore((s) => s.phase)
@@ -404,7 +410,7 @@ export function AssetCardPanel({
         <div className={styles.toolbarRow}>
           <SelfCheckToggle />
         </div>
-        <DesignCompletenessBar fileManager={fileManager} />
+        <DesignCompletenessBar fileManager={fileManager} projectId={projectId} />
         <div className={styles.body}>
           <div className={styles.empty}>暂无资产卡片</div>
         </div>
@@ -425,7 +431,7 @@ export function AssetCardPanel({
         <div className={styles.toolbarRow}>
           <SelfCheckToggle />
         </div>
-        <DesignCompletenessBar fileManager={fileManager} />
+        <DesignCompletenessBar fileManager={fileManager} projectId={projectId} />
         <div className={styles.body}>
           {sections.map(({ group, cards: sectionCards }) =>
             COLLAPSIBLE_GROUPS.has(group) ? (

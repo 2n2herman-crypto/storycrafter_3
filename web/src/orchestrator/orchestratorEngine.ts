@@ -15,6 +15,7 @@ import orchestratorPromptRaw from '../llm/prompts/orchestrator_v5.md?raw'
 import { runAgentLoop, SUBAGENT_LOOP_MAX_ROUNDS, SAFETY_MAX_ROUNDS } from './agentLoop'
 import { READ_FILE_TOOL, READ_REFERENCE_TOOL } from './readTools'
 import { auditStructure, type StructuralIssue } from '../skills/checker/structuralAudit'
+import { buildProjectStatusSnapshot, isProjectStatusQuery } from './projectStatus'
 
 type ChatCompletionMessageParam = OpenAI.Chat.Completions.ChatCompletionMessageParam
 
@@ -316,14 +317,6 @@ function loadOrchestratorPrompt(tools: object[]): string {
 
 // ===== Skill 执行 =====
 
-/**
- * 判断是否为"清空操作"Skill（如 reset_all）
- * 协议：writes:[] + outputTags:[] = 清空操作，不调 LLM
- */
-function isResetSkill(skill: SkillSpec): boolean {
-  return skill.writes.length === 0 && skill.outputTags.length === 0
-}
-
 /** 截断字符串到指定长度，超出加省略号（v7.2：执行日志时间线副标题用） */
 function truncate(text: string, maxLen: number): string {
   return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text
@@ -399,9 +392,9 @@ export class OrchestratorEngine {
   private batchProgress: Map<string, { lastUnit: number; done: boolean }> = new Map()
 
   /**
-   * v6.6 产品档案锁：会话级锁定不可变，由 UI 产品选择器经 lockProfile() 落定。
-   * null = 未选产品（Guard-0：设计区+成文区全禁，仅 reset_all 可用）。
-   * 解锁仅 reset_all（清资产同时释放 profileLock）。
+   * v6.6 产品档案锁：项目级锁定不可变，由 UI 产品选择器经 lockProfile() 落定。
+   * null = 当前项目尚未选择产品（Guard-0：设计区与成文区全部禁用）。
+   * 选定后不可在项目内切换；如需其他产品方向，应新建项目。
    */
   private profileLock: ProductProfile | null = null
 
@@ -418,13 +411,6 @@ export class OrchestratorEngine {
    */
   lockProfile(kind: ProductKind): void {
     this.profileLock = PRODUCT_PROFILES[kind]
-  }
-
-  /**
-   * 释放产品锁，回到未选产品态。仅 reset_all 调用（清资产同时清锁，可重选产品）。
-   */
-  clearProfileLock(): void {
-    this.profileLock = null
   }
 
   /** 查询当前产品档案（UI 展示 / 注入判定用）*/
@@ -484,11 +470,11 @@ export class OrchestratorEngine {
     options?: { target?: string },
   ): Promise<ToolResult> {
     // ===== v6.6 Guard 体系（FC 面 Guard-0/1 已裁剪，此处双保险兜底）=====
-    //  - Guard-0：未选产品(profileLock=null)时除 reset_all 外全拦
+    //  - Guard-0：未选产品(profileLock=null)时所有创作工具均不可用
     //  - Guard-2：写作期屏蔽设计区（含构筑 subagent）；设计期屏蔽写作 subagent
     //  - v7.3：quality_checker 不受阶段限制，只受 selfCheckStore 开关约束（下方独立判断）
     const psGuard = usePhaseStore.getState()
-    if (this.profileLock === null && subagent.id !== 'reset_all') {
+    if (this.profileLock === null) {
       this.emit('tool_error', {
         toolId: subagent.id,
         toolName: subagent.name,
@@ -629,28 +615,6 @@ export class OrchestratorEngine {
     //    单 Skill 时零成本直选、不调 LLM；≥2 candidate 时按 when/description 打分择优
     const skill = selectSkill(subagent.id, instruction)
 
-    // reset_all 特殊处理：空 writes + 空 outputTags = 不调 LLM，直接清空
-    if (isResetSkill(skill)) {
-      await this.fileManager.clearAll()
-      // v6.4：清空行为追踪
-      this.behaviorTrack.clear()
-      // v6.6：清空运行时记忆
-      this.foreshadowingState.clear()
-      this.batchProgress.clear()
-      // v6.6：释放产品档案锁，回到未选产品态（可重选产品）
-      this.clearProfileLock()
-      // v6.1 F.4：reset_all 触发时同步把 phase 打回 designing、清空 baselines，
-      // 保证状态机一致归零（clearAll 已删光 chapters/_seq 等全部内容故无需额外清理这些产物路径）。
-      usePhaseStore.getState().reset()
-      return {
-        success: true,
-        writes: [],
-        output: '已清空所有故事内容',
-        skillId: skill.skillId,
-        skillName: skill.name,
-      }
-    }
-
     // ② 读上下文（按 Skill.reads，支持 /*.md glob 展开 v6.3）
     const files: Record<string, string> = {}
     const allPaths = await this.fileManager.listAssetFiles()
@@ -679,7 +643,7 @@ export class OrchestratorEngine {
       // v6.6 设计区档案化：非 writer 的设计区 Subagent（act_map/sequence_list/
       //   foreshadowing_tracker/subplot_manager 等）注入 <product_profile>，
       //   供其 SKILL body 去硬编码后按档案取幕/序/场/拍区间与节拍词库、伏笔寿命。
-      //   Guard-0 已保证此处 profileLock 必非 null（reset_all 早已 return）。
+      //   Guard-0 已保证此处 profileLock 必非 null。
       context = appendExtraLabels(context, [
         { label: 'product_profile', content: renderProductProfileXml(this.profileLock) },
       ])
@@ -1870,12 +1834,31 @@ export class OrchestratorEngine {
     history: ConversationTurn[] = [],
     onEvent?: ExecutionEventCallback,
   ): Promise<DispatchResult> {
-    // ① 计算可用 Subagent（v5：全部始终可见）
     this.onEvent = onEvent
+
+    // v7.4：每轮先从 FileManager 机械扫描项目状态。
+    // 纯进度查询直接返回确定性表格，不再让 LLM 根据历史消息猜测；
+    // 其余请求则把同一快照注入 Orchestrator system prompt。
+    const projectStatus = await buildProjectStatusSnapshot(
+      this.fileManager,
+      this.profileLock,
+      usePhaseStore.getState().phase,
+    )
+    if (isProjectStatusQuery(userInput)) {
+      this.emit('engine_complete', { message: '已从项目资产实时读取当前进度' })
+      return {
+        success: true,
+        results: [],
+        response: projectStatus.markdown,
+        stageProposal: await this.probeAllScenesReady(),
+      }
+    }
+
+    // ① 计算可用 Subagent（v5：全部始终可见）
     const availableSubagents = getAvailableSubagents()
 
     // ===== v6.6 Guard-0/1：产品锁 + Phase Gate 双重可见性过滤（FC 面）=====
-    //  - profileLock=null：未选产品 → 仅 reset_all 可见（设计区+成文区全隐藏）
+    //  - profileLock=null：未选产品 → 不暴露任何创作工具
     //  - 设计期：剔除 prose_writer（须先🔒锁定大纲进写作期才可写正文）
     //  - 写作期：剔除设计区 + sequence_builder（构筑）
     //  - v7.3：quality_checker 受 selfCheckStore 开关控制，与阶段无关，独立判定
@@ -1890,7 +1873,7 @@ export class OrchestratorEngine {
     )
     let visibleSubagents: SubagentSpec[]
     if (this.profileLock === null) {
-      visibleSubagents = availableSubagents.filter((sa) => sa.id === 'reset_all')
+      visibleSubagents = []
     } else if (phaseState0.isWriting()) {
       visibleSubagents = availableSubagents.filter(
         (sa) =>
@@ -1909,7 +1892,7 @@ export class OrchestratorEngine {
     const toolSpecs = visibleSubagents.map(buildFunctionSpec)
 
     // ② 加载 System Prompt（注入工具列表）
-    let systemPrompt = loadOrchestratorPrompt(toolSpecs)
+    const systemPrompt = `${loadOrchestratorPrompt(toolSpecs)}\n\n## 当前项目权威状态\n\n${projectStatus.promptBlock}`
 
     // ②.4 v6.6 前置归一化：检测到未归一化的 _input_raw.md 时，强制先跑 input_normalizer，
     //      再允许需求合并——否则整篇原文会被 user_requirements_analyzer 当"需求"吞掉。

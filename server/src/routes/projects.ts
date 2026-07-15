@@ -31,10 +31,38 @@ projectsRouter.get('/:id', (req, res) => {
   res.json(meta)
 })
 
-// PATCH /api/projects/:id — 更新 name/description
+// PATCH /api/projects/:id — 更新展示信息与可恢复的运行状态
 projectsRouter.patch('/:id', (req, res) => {
   try {
-    const patch = req.body as { name?: string; description?: string }
+    const patch = req.body as {
+      name?: string
+      description?: string
+      productKind?: 'novel' | 'screenplay' | 'long_drama' | 'short_drama' | null
+      phase?: 'designing' | 'writing'
+      stageProposalPending?: boolean
+    }
+    const productKinds = new Set(['novel', 'screenplay', 'long_drama', 'short_drama'])
+    if (
+      patch.productKind !== undefined &&
+      patch.productKind !== null &&
+      !productKinds.has(patch.productKind)
+    ) {
+      res.status(400).json({ error: { kind: 'bad_request', message: '无效的 productKind' } })
+      return
+    }
+    if (patch.phase !== undefined && patch.phase !== 'designing' && patch.phase !== 'writing') {
+      res.status(400).json({ error: { kind: 'bad_request', message: '无效的 phase' } })
+      return
+    }
+    if (
+      patch.stageProposalPending !== undefined &&
+      typeof patch.stageProposalPending !== 'boolean'
+    ) {
+      res
+        .status(400)
+        .json({ error: { kind: 'bad_request', message: '无效的 stageProposalPending' } })
+      return
+    }
     res.json(updateProject(req.params.id, patch))
   } catch (e) {
     if (e instanceof ProjectNotFound) {

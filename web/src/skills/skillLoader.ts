@@ -137,6 +137,8 @@ const referenceModules = import.meta.glob<{ default: string }>(
 
 /** 禁止 Skill frontmatter 声明属主（硬约束：Skill 不决定自己属于哪个 agent）。 */
 const FORBIDDEN_SKILL_KEYS = ['subagent', 'owner', 'agent']
+/** 已从产品能力中移除的 Subagent；同时屏蔽内置文件与服务端用户源残留。 */
+const DISABLED_SUBAGENT_IDS = new Set(['reset_all'])
 
 // ===== 构建注册表 =====
 
@@ -151,6 +153,7 @@ function buildRegistries(): {
   for (const [path, mod] of Object.entries(subagentModules)) {
     const segs = path.split('/')
     const dirId = segs[segs.length - 2]
+    if (DISABLED_SUBAGENT_IDS.has(dirId)) continue
     const { data, body } = parseFrontmatter(mod.default)
 
     const id = asString(data.id) || dirId
@@ -178,6 +181,7 @@ function buildRegistries(): {
     const segs = path.split('/')
     const skillId = segs[segs.length - 2]
     const subagentId = segs[segs.length - 3]
+    if (DISABLED_SUBAGENT_IDS.has(subagentId)) continue
 
     const { data, body } = parseFrontmatter(mod.default)
 
@@ -289,6 +293,7 @@ export async function loadUserSkills(): Promise<void> {
   // ① 解析用户源 Subagent
   const userSubagents = new Map<string, SubagentSpec>()
   for (const f of data.subagents) {
+    if (DISABLED_SUBAGENT_IDS.has(f.subagentId)) continue
     try {
       const { data: fm, body } = parseFrontmatter(f.raw)
       const id = asString(fm.id) || f.subagentId
@@ -312,6 +317,7 @@ export async function loadUserSkills(): Promise<void> {
   // ② 解析用户源 Skill
   const userSkillsBySubagent = new Map<string, SkillSpec[]>()
   for (const f of data.skills) {
+    if (DISABLED_SUBAGENT_IDS.has(f.subagentId)) continue
     try {
       const { data: fm, body } = parseFrontmatter(f.raw)
       let skip = false

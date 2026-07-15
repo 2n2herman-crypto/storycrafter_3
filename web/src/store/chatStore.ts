@@ -6,11 +6,14 @@ import { useAssetStore } from './assetStore'
 import { usePhaseStore } from './phaseStore'
 import { classifyLLMError } from '../utils/llmError'
 import { loadChat, appendChatMessage, appendChatEvent, clearChat } from '../api/chat'
+import { updateProject } from '../api/projects'
 
 // ===== 常量 =====
 
 /** 回传给引擎的对话窗口大小（最近 N 条消息，v5.5 跨轮需求记忆） */
-const HISTORY_WINDOW = 6
+const HISTORY_WINDOW = 24
+/** 对话历史字符预算：在扩大轮数的同时避免超长回复挤爆模型上下文 */
+const HISTORY_CHAR_BUDGET = 16_000
 
 // ===== Store 类型 =====
 
@@ -22,13 +25,17 @@ interface ChatStore {
   /** v6.6：当前锁定的产品方向（null=未选产品，UI 须先引导选择）*/
   product: ProductKind | null
 
-  init: (engine: OrchestratorEngine, projectId: string | null) => Promise<void>
+  init: (
+    engine: OrchestratorEngine,
+    projectId: string | null,
+    stageProposalPending?: boolean,
+  ) => Promise<void>
   sendMessage: (content: string) => Promise<void>
   addMessage: (msg: ChatMessage) => void
   clearMessages: () => void
   toggleLogExpanded: () => void
   clearExecutionLog: () => void
-  /** v6.6：UI 产品选择器落定产品档案（仅在未锁定时生效；切换须 reset_all）*/
+  /** UI 产品选择器落定项目产品档案；选定后不可在项目内切换。 */
   setProduct: (kind: ProductKind) => void
   /** v6.6：投喂文件落到 _input_raw.md（input_normalizer 生产端）*/
   appendInputRaw: (filename: string, content: string) => Promise<void>
@@ -63,7 +70,17 @@ function createSystemMessage(content: string): ChatMessage {
   }
 }
 
-/** v7.1 改动3：生成一张待选的 StageCard 提问消息（对话流内渲染，不持久化——交互 UI 态） */
+function truncateHistoryContent(content: string, maxChars: number): string {
+  if (content.length <= maxChars) return content
+  const marker = '\n\n...[消息过长，已截断中间内容]...\n\n'
+  if (maxChars <= marker.length) return content.slice(-maxChars)
+  const available = maxChars - marker.length
+  const headChars = Math.floor(available / 2)
+  const tailChars = available - headChars
+  return `${content.slice(0, headChars)}${marker}${content.slice(-tailChars)}`
+}
+
+/** v7.4：生成项目级待选 StageCard；卡片内容不进聊天记录，pending 状态写项目 metadata。 */
 function createStageProposalMessage(): ChatMessage {
   return {
     id: nextId(),
@@ -105,7 +122,11 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   isLogExpanded: false,
   product: null,
 
-  init: async (engine: OrchestratorEngine, projectId: string | null) => {
+  init: async (
+    engine: OrchestratorEngine,
+    projectId: string | null,
+    stageProposalPending = false,
+  ) => {
     _engine = engine
     _projectId = projectId ?? null
     // 重置 state（首次 init / 切项目都走此路径）
@@ -120,7 +141,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (_projectId) {
       try {
         const history = await loadChat(_projectId)
-        set({ messages: history.messages })
+        const messages = [...history.messages]
+        if (
+          stageProposalPending &&
+          !messages.some((m) => m.kind === 'stage_proposal' && m.stageState === 'pending')
+        ) {
+          messages.push(createStageProposalMessage())
+        }
+        set({ messages })
       } catch (e) {
         console.error('[chatStore] 加载对话历史失败', e)
       }
@@ -134,12 +162,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     if (isProcessing || !_engine) return
 
     // ② 采集对话窗口（推入本次 userMsg 之前，避免重复；system → assistant 映射）
-    const history: ConversationTurn[] = get()
-      .messages.slice(-HISTORY_WINDOW)
-      .map((m) => ({
+    const recentMessages = get().messages.slice(-HISTORY_WINDOW)
+    let historyChars = 0
+    const history: ConversationTurn[] = []
+    for (let i = recentMessages.length - 1; i >= 0; i--) {
+      const m = recentMessages[i]
+      const remainingChars = HISTORY_CHAR_BUDGET - historyChars
+      if (remainingChars <= 0) break
+      // 更早的消息按字符预算整条淘汰，避免截断多条消息的语义。
+      if (history.length > 0 && m.content.length > remainingChars) break
+      const historyContent = truncateHistoryContent(m.content, remainingChars)
+      history.unshift({
         role: m.role === 'system' ? 'assistant' : 'user',
-        content: m.content,
-      }))
+        content: historyContent,
+      })
+      historyChars += historyContent.length
+    }
 
     // ③ 添加用户消息，重置执行日志
     const userMsg = createUserMessage(content)
@@ -187,6 +225,13 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         )
         if (!hasPendingCard) {
           set((state) => ({ messages: [...state.messages, createStageProposalMessage()] }))
+          if (_projectId) {
+            try {
+              await updateProject(_projectId, { stageProposalPending: true })
+            } catch (e) {
+              console.error('[chatStore] 持久化待选阶段卡失败', e)
+            }
+          }
         }
       }
     } catch (error) {
@@ -199,8 +244,17 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       }))
       persistMessage(errorMsg)
     } finally {
-      // v6.6：同步产品锁定状态（reset_all 执行后会释放 profileLock，UI 须感知）
-      set({ isProcessing: false, product: _engine?.getProfile()?.kind ?? null })
+      const product = _engine?.getProfile()?.kind ?? null
+      const phase = usePhaseStore.getState().phase
+      set({ isProcessing: false, product })
+      // v7.4：持久化当前项目的产品方向与创作阶段，供切换项目或重启后恢复。
+      if (_projectId) {
+        try {
+          await updateProject(_projectId, { productKind: product, phase })
+        } catch (e) {
+          console.error('[chatStore] 持久化项目运行状态失败', e)
+        }
+      }
     }
   },
 
@@ -230,10 +284,15 @@ export const useChatStore = create<ChatStore>((set, get) => ({
 
   setProduct: (kind: ProductKind) => {
     if (!_engine) return
-    // 仅在未锁定产品时允许选择；已锁定须 reset_all 后重选（守 03 §1.3 切换=reset）
+    // 产品方向按项目锁定；需要其他方向时新建项目。
     if (_engine.getProfile() !== null) return
     _engine.lockProfile(kind)
     set({ product: kind })
+    if (_projectId) {
+      void updateProject(_projectId, { productKind: kind }).catch((e) =>
+        console.error('[chatStore] 持久化产品方向失败', e),
+      )
+    }
   },
 
   appendInputRaw: async (filename: string, content: string) => {
@@ -259,6 +318,16 @@ export const useChatStore = create<ChatStore>((set, get) => ({
         createSystemMessage(`⚠️ ${e instanceof Error ? e.message : String(e)}`),
       )
       return
+    }
+    if (_projectId) {
+      try {
+        await updateProject(_projectId, {
+          phase: usePhaseStore.getState().phase,
+          stageProposalPending: false,
+        })
+      } catch (e) {
+        console.error('[chatStore] 持久化创作阶段失败', e)
+      }
     }
     // 该卡片置只读态，记录落定阶段
     set((state) => ({

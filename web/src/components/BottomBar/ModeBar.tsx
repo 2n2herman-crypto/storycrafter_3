@@ -8,7 +8,7 @@ import styles from './ModeBar.module.css'
  *
  * 交互规则：
  *   - 未选产品：四按钮可点 → setProduct（内部 engine.lockProfile）
- *   - 已选产品：立即折叠为单个已选按钮并锁定，不可撤销（仅 reset_all 可解）
+ *   - 已选产品：立即折叠为单个已选按钮并按项目永久锁定；其他方向请新建项目
  *
  * 数据源完全复用 chatStore，不新增 state。
  */
@@ -49,7 +49,7 @@ export function ModeBar() {
               title={
                 locked
                   ? active
-                    ? '已锁定该创作模式（重置后可重选）'
+                    ? '该创作模式已按项目锁定；如需其他方向请新建项目'
                     : ''
                   : `选择 ${p.displayName} 方向`
               }
