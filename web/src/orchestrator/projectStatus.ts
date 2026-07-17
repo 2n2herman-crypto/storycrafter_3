@@ -8,8 +8,26 @@ interface ModuleStatus {
   detail: string
 }
 
+interface SequenceStatus {
+  id: string
+  sequenceReady: boolean
+  sceneReady: boolean
+  beatReady: boolean
+}
+
+interface SequenceDispatchSummary {
+  total: number
+  sequencePendingIds: string[]
+  scenePendingIds: string[]
+  beatPendingIds: string[]
+  writingTargetIds: string[]
+}
+
 export interface ProjectStatusSnapshot {
   modules: ModuleStatus[]
+  sequenceIds: string[]
+  sequences: SequenceStatus[]
+  sequenceDispatch: SequenceDispatchSummary
   existingFileCount: number
   promptBlock: string
   markdown: string
@@ -95,18 +113,31 @@ export async function buildProjectStatusSnapshot(
   ]
 
   const sequenceIds = parseSequenceIds(contents.get('sequence_list.md') ?? '')
-  const completedSequences = sequenceIds.filter((id) =>
-    isReady(`sequences/${id}.md`),
+  const sequences: SequenceStatus[] = sequenceIds.map((id) => ({
+    id,
+    sequenceReady: isReady(`sequences/${id}.md`),
+    sceneReady: existingPaths.includes(`scenes/${id}.md`),
+    beatReady: existingPaths.includes(`beats/${id}.md`),
+  }))
+  const sequenceDispatch: SequenceDispatchSummary = {
+    total: sequenceIds.length,
+    sequencePendingIds: sequences.filter((sequence) => !sequence.sequenceReady).map((sequence) => sequence.id),
+    scenePendingIds: sequences.filter((sequence) => !sequence.sceneReady).map((sequence) => sequence.id),
+    beatPendingIds: sequences.filter((sequence) => !sequence.beatReady).map((sequence) => sequence.id),
+    writingTargetIds: sequenceIds,
+  }
+  const completedSceneBeatSequences = sequences.filter(
+    (sequence) => sequence.sequenceReady && sequence.sceneReady && sequence.beatReady,
   ).length
-  const sceneBeatComplete = sequenceIds.length > 0 && completedSequences === sequenceIds.length
+  const sceneBeatComplete = sequenceIds.length > 0 && completedSceneBeatSequences === sequenceIds.length
   modules.push({
     label: '场景节拍',
     complete: sceneBeatComplete,
     detail: sequenceIds.length === 0
       ? '未创建'
       : sceneBeatComplete
-        ? `已完成（${completedSequences}/${sequenceIds.length} 个序列）`
-        : `进行中（${completedSequences}/${sequenceIds.length} 个序列）`,
+        ? `已完成（${completedSceneBeatSequences}/${sequenceIds.length} 个序列）`
+        : `进行中（${completedSceneBeatSequences}/${sequenceIds.length} 个序列）`,
   })
 
   const writingCount = existingPaths.filter(isPrimaryWritingAssetPath).length
@@ -147,10 +178,14 @@ export async function buildProjectStatusSnapshot(
     ),
     '</project_status>',
     '当用户提及项目现状、已有资产或下一步时，必须以上述文件系统快照为准；不得根据聊天历史推测文件缺失。',
+    '当你需要精确序列 ID、序列数量、任务规模或某个资产内容时，必须调用 read_asset_file 渐进式读取对应资产；不要把编号规律当作事实。',
   ].join('\n')
 
   return {
     modules,
+    sequenceIds,
+    sequences,
+    sequenceDispatch,
     existingFileCount: existingPaths.length,
     promptBlock,
     markdown,

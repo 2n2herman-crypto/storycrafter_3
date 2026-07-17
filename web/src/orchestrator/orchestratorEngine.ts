@@ -35,6 +35,27 @@ const CONTEXT_LIMIT_CHARS = 22_000 // deepseek-v4-flash 32K 的 ~70%
 const MAIN_LOOP_MAX_ROUNDS = 10
 const TURN_TIMEOUT_MS = 5 * 60 * 1000
 const MAX_NO_PROGRESS_ROUNDS = 2
+const READ_ASSET_FILE_TOOL_ID = 'read_asset_file'
+const READ_ASSET_FILE_MAX_CHARS = 12_000
+
+const READ_ASSET_FILE_TOOL: OpenAI.Chat.Completions.ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: READ_ASSET_FILE_TOOL_ID,
+    description:
+      '渐进式读取一个项目资产文件。用于主调度在需要确认真实序列 ID、序列数量、任务规模或资产内容时读取 sequence_list.md 等文件；只读，不写入。',
+    parameters: {
+      type: 'object',
+      properties: {
+        path: {
+          type: 'string',
+          description: '资产路径，如 sequence_list.md、act_map.md、sequences/S1-1.md。不得使用绝对路径或 ..。',
+        },
+      },
+      required: ['path'],
+    },
+  },
+}
 
 /** v7.3：统一并发池上限（构筑/写作 subagent 批量调度共用） */
 const BATCH_CONCURRENCY = 5
@@ -259,6 +280,15 @@ function normalizeCallText(text: string): string {
 
 function buildToolCallSignature(toolId: string, target: string, instruction: string): string {
   return `${toolId}:${target.trim().toUpperCase()}:${normalizeCallText(instruction)}`
+}
+
+function isSafeAssetPath(path: string): boolean {
+  return (
+    path.length > 0 &&
+    !path.startsWith('/') &&
+    !path.includes('..') &&
+    /^[\w./-]+\.md$/.test(path)
+  )
 }
 
 // ===== 上下文管理 =====
@@ -1306,6 +1336,32 @@ export class OrchestratorEngine {
     }
   }
 
+  private async executeOrchestratorReadAssetFile(path: string): Promise<string> {
+    const normalizedPath = path.trim()
+    if (!isSafeAssetPath(normalizedPath)) {
+      return JSON.stringify({
+        success: false,
+        error: `非法资产路径：${path}`,
+      })
+    }
+
+    const allFiles = await this.fileManager.listAssetFiles()
+    const known = allFiles.find((file) => file.path === normalizedPath)
+    const content = await safeRead(this.fileManager, normalizedPath)
+    const truncated = content.length > READ_ASSET_FILE_MAX_CHARS
+    return JSON.stringify({
+      success: true,
+      path: normalizedPath,
+      exists: known?.exists ?? content.length > 0,
+      length: content.length,
+      truncated,
+      content: truncated ? content.slice(0, READ_ASSET_FILE_MAX_CHARS) : content,
+      note: truncated
+        ? `内容超过 ${READ_ASSET_FILE_MAX_CHARS} 字符，已截断；如需更细粒度信息，请读取更具体的资产文件。`
+        : undefined,
+    })
+  }
+
   /**
    * 处理用户输入
    *
@@ -1373,7 +1429,7 @@ export class OrchestratorEngine {
           !(sa.id === 'quality_checker' && !selfCheckEnabled),
       )
     }
-    const toolSpecs = visibleSubagents.map(buildFunctionSpec)
+    const toolSpecs = [...visibleSubagents.map(buildFunctionSpec), READ_ASSET_FILE_TOOL]
 
     // ② 加载 System Prompt（注入工具列表）
     const systemPrompt = `${loadOrchestratorPrompt(toolSpecs)}\n\n## 当前项目权威状态\n\n${projectStatus.promptBlock}`
@@ -1559,21 +1615,28 @@ export class OrchestratorEngine {
           // 串行执行每个 Subagent
           for (const toolCall of callsToProcess) {
             const toolId = toolCall.function.name
-            const subagentSpec = getSubagent(toolId)
+            const isAssetReadTool = toolId === READ_ASSET_FILE_TOOL_ID
+            const subagentSpec = isAssetReadTool ? undefined : getSubagent(toolId)
 
             // 解析 instruction + v6.1 动态靶参数（target_sequence / target_chapter 由 buildFunctionSpec
             // 条件附加给 NEEDS_TARGET_PARAM 白名单成员；其它 subagent 不携带此字段，空串无影响）
             let instruction = ''
             let argTarget = ''
+            let readAssetPath = ''
             try {
               const args = JSON.parse(toolCall.function.arguments)
               instruction = args.instruction || ''
               argTarget = String(args.target_sequence ?? args.target_chapter ?? '').trim()
+              readAssetPath = String(args.path ?? '').trim()
             } catch {
               instruction = toolCall.function.arguments || ''
             }
 
-            const signature = buildToolCallSignature(toolId, argTarget, instruction)
+            const signature = buildToolCallSignature(
+              toolId,
+              argTarget,
+              isAssetReadTool ? readAssetPath : instruction,
+            )
             const repeatedFailure = (failureCounts.get(signature) ?? 0) >= 2
             if (successfulSignatures.has(signature) || repeatedFailure) {
               roundSawDuplicate = true
@@ -1586,6 +1649,30 @@ export class OrchestratorEngine {
                   error: repeatedFailure ? '同一调用已连续失败两次' : '同一调用已成功执行',
                 }),
               } as ChatCompletionMessageParam)
+              continue
+            }
+
+            if (isAssetReadTool) {
+              this.emit('tool_start', {
+                toolId,
+                toolName: '读取资产',
+                round: state.currentRound + 1,
+                maxRounds: state.maxRounds,
+                message: `读取资产：${readAssetPath || '(empty)'}`,
+              })
+              const readResult = await this.executeOrchestratorReadAssetFile(readAssetPath)
+              messages.push({
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                content: readResult,
+              } as ChatCompletionMessageParam)
+              successfulSignatures.add(signature)
+              roundHadProgress = true
+              this.emit('tool_complete', {
+                toolId,
+                toolName: '读取资产',
+                message: `读取资产完成：${readAssetPath || '(empty)'}`,
+              })
               continue
             }
 
