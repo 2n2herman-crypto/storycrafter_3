@@ -289,6 +289,9 @@ export interface ExecutionEvent {
   /** 发生时间戳 */
   timestamp: number
 
+  /** v7.4：所属对话轮次；用于刷新后把日志恢复到对应结果前。 */
+  turnId?: string
+
   /** 当前调度轮次 */
   round?: number
 

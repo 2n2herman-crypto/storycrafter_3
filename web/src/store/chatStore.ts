@@ -21,6 +21,8 @@ interface ChatStore {
   messages: ChatMessage[]
   isProcessing: boolean
   executionLog: ExecutionEvent[]
+  /** v7.4：按轮次持久恢复的执行日志；刷新后仍显示在对应对话记录内。 */
+  executionLogsByTurn: Record<string, ExecutionEvent[]>
   /** v7.4：当前 executionLog 所属轮次；用于把日志稳定放在该轮结果之前。 */
   executionTurnId: string | null
   isLogExpanded: boolean
@@ -86,6 +88,15 @@ function truncateHistoryContent(content: string, maxChars: number): string {
   return `${content.slice(0, headChars)}${marker}${content.slice(-tailChars)}`
 }
 
+function groupEventsByTurn(events: ExecutionEvent[]): Record<string, ExecutionEvent[]> {
+  const grouped: Record<string, ExecutionEvent[]> = {}
+  for (const event of events) {
+    if (!event.turnId) continue
+    grouped[event.turnId] = [...(grouped[event.turnId] ?? []), event]
+  }
+  return grouped
+}
+
 // ===== 模块级变量（不放入 Store 响应式状态） =====
 
 let _engine: OrchestratorEngine | null = null
@@ -113,6 +124,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   messages: [],
   isProcessing: false,
   executionLog: [],
+  executionLogsByTurn: {},
   executionTurnId: null,
   isLogExpanded: false,
   product: null,
@@ -124,16 +136,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     set({
       messages: [],
       executionLog: [],
+      executionLogsByTurn: {},
       executionTurnId: null,
       isLogExpanded: false,
       isProcessing: false,
       product: engine.getProfile()?.kind ?? null,
     })
-    // 拉历史对话（仅持久化模式；events 历史不回填 executionLog，前端只展示当前轮）
+    // 拉历史对话（仅持久化模式；events 按 turnId 回填到对应轮次）
     if (_projectId) {
       try {
         const history = await loadChat(_projectId)
-        set({ messages: [...history.messages] })
+        set({
+          messages: [...history.messages],
+          executionLogsByTurn: groupEventsByTurn(history.events),
+        })
       } catch (e) {
         console.error('[chatStore] 加载对话历史失败', e)
       }
@@ -172,6 +188,10 @@ export const useChatStore = create<ChatStore>((set, get) => ({
       messages: [...state.messages, userMsg],
       isProcessing: true,
       executionLog: [],
+      executionLogsByTurn: {
+        ...state.executionLogsByTurn,
+        [turnId]: [],
+      },
       executionTurnId: turnId,
       isLogExpanded: true,
     }))
@@ -180,15 +200,20 @@ export const useChatStore = create<ChatStore>((set, get) => ({
     try {
       // ④ 调用 OrchestratorEngine（传对话窗口 + onEvent 实时收集执行日志 + 刷新资产卡片）
       const result = await _engine.processUserInput(content, history, (event) => {
+        const turnEvent: ExecutionEvent = { ...event, turnId }
         // 追加执行日志
         set((state) => ({
-          executionLog: [...state.executionLog, event],
+          executionLog: [...state.executionLog, turnEvent],
+          executionLogsByTurn: {
+            ...state.executionLogsByTurn,
+            [turnId]: [...(state.executionLogsByTurn[turnId] ?? []), turnEvent],
+          },
         }))
-        persistEvent(event)
+        persistEvent(turnEvent)
 
         // Subagent 完成时实时刷新其写入的资产卡片（writes 由事件携带，精准刷新）
-        if (event.type === 'tool_complete' && event.writes) {
-          for (const writePath of event.writes) {
+        if (turnEvent.type === 'tool_complete' && turnEvent.writes) {
+          for (const writePath of turnEvent.writes) {
             useAssetStore.getState().refreshFile(writePath)
           }
         }
@@ -254,7 +279,7 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   clearMessages: () => {
-    set({ messages: [] })
+    set({ messages: [], executionLog: [], executionLogsByTurn: {}, executionTurnId: null })
     if (_projectId) {
       void clearChat(_projectId).catch((e) =>
         console.error('[chatStore] 清空后端对话失败', e),
@@ -267,7 +292,14 @@ export const useChatStore = create<ChatStore>((set, get) => ({
   },
 
   clearExecutionLog: () => {
-    set({ executionLog: [], isLogExpanded: false })
+    const currentTurnId = get().executionTurnId
+    set((state) => ({
+      executionLog: [],
+      executionLogsByTurn: currentTurnId
+        ? { ...state.executionLogsByTurn, [currentTurnId]: [] }
+        : state.executionLogsByTurn,
+      isLogExpanded: false,
+    }))
   },
 
   setProduct: (kind: ProductKind) => {

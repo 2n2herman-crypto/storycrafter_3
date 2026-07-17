@@ -1,9 +1,9 @@
 .card {
   width: calc(100% - 36px);
-  margin: 6px 36px 6px 0;
+  margin: 4px 36px 4px 0;
   text-align: left;
   border: 1px solid var(--color-border);
-  border-radius: 14px;
+  border-radius: 8px;
   background: var(--color-bg-tertiary);
   box-shadow: var(--shadow-panel);
   overflow: hidden;
@@ -14,7 +14,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
+  padding: 7px 10px;
   background: none;
   border: none;
   cursor: pointer;
@@ -24,24 +24,24 @@
 
 .headerTitle {
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: 10px;
   color: var(--color-text-primary);
 }
 
 .headerRight {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
 }
 
 .summary {
-  font-size: 11px;
+  font-size: 9px;
   color: var(--color-text-muted);
 }
 
 .chevron {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-right: 1.5px solid var(--color-text-muted);
   border-bottom: 1.5px solid var(--color-text-muted);
   transform: rotate(45deg);
@@ -55,18 +55,18 @@
 .body {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 0 14px 12px;
+  gap: 5px;
+  padding: 0 10px 8px;
 }
 
 .row {
   position: relative;
   display: grid;
-  grid-template-columns: 34px 1fr;
-  gap: 10px;
-  padding: 10px;
+  grid-template-columns: 23px 1fr;
+  gap: 7px;
+  padding: 7px;
   border: 1px solid var(--color-border);
-  border-radius: 10px;
+  border-radius: 7px;
   background: var(--color-bg-elevated);
 }
 
@@ -76,22 +76,22 @@
 
 .connector {
   position: absolute;
-  left: 27px;
-  top: 44px;
+  left: 18px;
+  top: 30px;
   width: 1px;
-  height: calc(100% - 24px + 8px);
+  height: calc(100% - 16px + 5px);
   background: var(--color-border);
 }
 
 .glyph {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
+  width: 23px;
+  height: 23px;
+  border-radius: 7px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-display);
-  font-size: 18px;
+  font-size: 12px;
   font-weight: 600;
   background: var(--color-bg-hover);
   color: var(--color-text-secondary);
@@ -105,14 +105,14 @@
 .row.running .glyph {
   background: var(--color-accent-soft);
   color: var(--color-accent);
-  border: 1.5px solid var(--color-accent);
+  border: 1px solid var(--color-accent);
   animation: scLogPulse 1.4s ease-in-out infinite;
 }
 
 .row.error .glyph {
   background: rgba(139, 53, 72, 0.12);
   color: var(--color-danger);
-  border: 1.5px solid var(--color-danger);
+  border: 1px solid var(--color-danger);
 }
 
 @keyframes scLogPulse {
@@ -126,19 +126,19 @@
 }
 
 .rowTitle {
-  font-size: 13px;
+  font-size: 10px;
   color: var(--color-text-primary);
 }
 
 .rowReason {
-  font-size: 11.5px;
+  font-size: 9px;
   font-weight: 500;
   color: var(--color-text-secondary);
-  margin-top: 2px;
+  margin-top: 1px;
 }
 
 .rowSubtitle {
-  font-size: 11px;
+  font-size: 9px;
   color: var(--color-text-muted);
-  margin-top: 2px;
+  margin-top: 1px;
 }

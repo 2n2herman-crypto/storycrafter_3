@@ -31,7 +31,6 @@ export function MultiColumnLayout({
   const handleResize = useCallback(
     (index: number, deltaX: number) => {
       if (!containerRef.current) return
-      // 根节点会做全局等比缩放；使用可见宽度保证拖拽距离与鼠标移动一致。
       const containerWidth = containerRef.current.getBoundingClientRect().width
       if (containerWidth <= 0) return
 

@@ -1,7 +1,7 @@
-import { useEffect, useRef } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import type { ChatMessage } from '../../types'
+import type { ChatMessage, ExecutionEvent } from '../../types'
 import { useChatStore } from '../../store/chatStore'
 import { ExecutionLogCard } from './ExecutionLogCard'
 import styles from './ChatHistory.module.css'
@@ -36,9 +36,37 @@ interface ChatHistoryProps {
   messages: ChatMessage[]
 }
 
+interface TurnExecutionLogProps {
+  executionLog: ExecutionEvent[]
+  isCurrentTurn: boolean
+  isProcessing: boolean
+  isExpanded: boolean
+  onToggle: () => void
+}
+
+function TurnExecutionLog({
+  executionLog,
+  isCurrentTurn,
+  isProcessing,
+  isExpanded,
+  onToggle,
+}: TurnExecutionLogProps) {
+  const [historyExpanded, setHistoryExpanded] = useState(false)
+
+  return (
+    <ExecutionLogCard
+      executionLog={executionLog}
+      isProcessing={isCurrentTurn && isProcessing}
+      isExpanded={isCurrentTurn ? isExpanded : historyExpanded}
+      onToggle={isCurrentTurn ? onToggle : () => setHistoryExpanded((value) => !value)}
+    />
+  )
+}
+
 export function ChatHistory({ messages }: ChatHistoryProps) {
   const isProcessing = useChatStore((s) => s.isProcessing)
   const executionLog = useChatStore((s) => s.executionLog)
+  const executionLogsByTurn = useChatStore((s) => s.executionLogsByTurn)
   const executionTurnId = useChatStore((s) => s.executionTurnId)
   const isLogExpanded = useChatStore((s) => s.isLogExpanded)
   const toggleLogExpanded = useChatStore((s) => s.toggleLogExpanded)
@@ -61,18 +89,8 @@ export function ChatHistory({ messages }: ChatHistoryProps) {
   }
 
   // ===== 渲染 =====
-  const currentResultIndex = executionTurnId
-    ? messages.findIndex((msg) => msg.kind === 'turn_result' && msg.turnId === executionTurnId)
-    : -1
-  const messagesBeforeLog = currentResultIndex >= 0
-    ? messages.slice(0, currentResultIndex)
-    : messages
-  const messagesAfterLog = currentResultIndex >= 0
-    ? messages.slice(currentResultIndex)
-    : []
-
   const renderMessage = (msg: ChatMessage) => (
-    <div key={msg.id} className={`${styles.message} ${msg.role === 'user' ? styles.user : styles.system}`}>
+    <div className={`${styles.message} ${msg.role === 'user' ? styles.user : styles.system}`}>
       <span className={`${styles.tag} ${getRoleClass(msg.role)}`}>
         {getRoleLabel(msg.role)}
       </span>
@@ -89,19 +107,42 @@ export function ChatHistory({ messages }: ChatHistoryProps) {
     </div>
   )
 
+  const currentResultExists = executionTurnId
+    ? messages.some((msg) => msg.kind === 'turn_result' && msg.turnId === executionTurnId)
+    : false
+
   return (
     <div className={styles.container}>
-      {messagesBeforeLog.map(renderMessage)}
+      {messages.map((msg) => {
+        const turnLog = msg.turnId ? (executionLogsByTurn[msg.turnId] ?? []) : []
+        const isCurrentTurn = Boolean(msg.turnId && msg.turnId === executionTurnId)
+        const logForRender = isCurrentTurn ? executionLog : turnLog
 
-      {/* v7.2：执行日志时间线卡片 */}
-      <ExecutionLogCard
-        executionLog={executionLog}
-        isProcessing={isProcessing}
-        isExpanded={isLogExpanded}
-        onToggle={toggleLogExpanded}
-      />
+        return (
+          <Fragment key={msg.id}>
+            {msg.kind === 'turn_result' && logForRender.length > 0 && (
+              <TurnExecutionLog
+                executionLog={logForRender}
+                isCurrentTurn={isCurrentTurn}
+                isProcessing={isProcessing}
+                isExpanded={isLogExpanded}
+                onToggle={toggleLogExpanded}
+              />
+            )}
+            {renderMessage(msg)}
+          </Fragment>
+        )
+      })}
 
-      {messagesAfterLog.map(renderMessage)}
+      {!currentResultExists && executionLog.length > 0 && (
+        <TurnExecutionLog
+          executionLog={executionLog}
+          isCurrentTurn={true}
+          isProcessing={isProcessing}
+          isExpanded={isLogExpanded}
+          onToggle={toggleLogExpanded}
+        />
+      )}
 
       {/* v7.1 改动4：处理中呼吸灯（不刷事件流） */}
       {isProcessing && (
