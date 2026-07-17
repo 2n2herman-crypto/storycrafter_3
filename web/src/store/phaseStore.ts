@@ -7,7 +7,7 @@ import type { FileManager } from '../orchestrator/fileManager'
  * 把「设计期 designing」与「落地期 writing」物理隔开：
  *   - lock(fm)：校验六项核心静态设定齐全且非空、收集现有 sequences/scenes/beats/*.md 全员清单，
  *               全体拍照存入 baselines 作 UI 对照基线；置 phase='writing'。
- *   - unlock()：回退 phase 并清空快照，**保留 chapters/ 正文成果**
+ *   - unlock()：回退 phase 并清空快照，**保留写作期正文/剧本成果**
  *               （解锁是为了回去微调设定再续写不该丢稿子）。
  *   - reset()：彻底归位至初始 designing 空 baselines（供 reset_all 触发联动）。
  *   - isLockedPath(p)/getBaseline(p)：分别服务引擎 Guard 判定与 BaselinePanel 渲染。
@@ -21,7 +21,7 @@ export type StoryPhase = 'designing' | 'writing'
 /**
  * 固定的六项静态锁定资产。
  *
- * 注：不含 user_requirements.md（元数据始终可更新）、chapters/*
+ * 注：不含 user_requirements.md（元数据始终可更新）和写作产物目录
  * （写作期产物本身就该可写）。
  */
 export const LOCKED_STATIC_PATHS = [

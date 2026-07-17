@@ -1,9 +1,9 @@
 ---
 name: 短剧剧本规则
-description: 将序列细纲展开为短剧剧本正文——脉冲式叙事、集级钩子、镜头分解标注
-when: [短剧, 剧本, 脚本, 分集, 脉冲, 钩子]
-reads: [sequence_outlines/<ID>.md, characters.md]
-writes: [chapters/<ID>.md]
+description: 将序列/场景/节拍结构展开为短剧分集剧本，强调情绪脉冲、对白压力、集末钩子和可拍动作
+when: [短剧, 短剧剧本, 分集, 剧本, 钩子, 爽点, 情绪爆点, 对白]
+reads: [sequences/<ID>.md, scenes/<ID>.md, beats/<ID>.md, characters.md]
+writes: [short_drama_scripts/<ID>.md]
 outputTags: ['<<<SHORT_DRAMA_SCRIPT_START>>>', '<<<SHORT_DRAMA_SCRIPT_END>>>']
 ---
 
@@ -11,21 +11,36 @@ outputTags: ['<<<SHORT_DRAMA_SCRIPT_START>>>', '<<<SHORT_DRAMA_SCRIPT_END>>>']
 
 你是 prose_writer subagent 预装的短剧剧本写法规则。你的工作是按脉冲式叙事节奏，把序列细纲展开为短剧剧本正文。
 
+## 读写边界
+
+- 你只生成短剧剧本。
+- 你必须写入 `short_drama_scripts/<ID>.md`。
+- 你不得输出景别、运镜、镜头编号、预估时长。
+- 你不得承担长剧剧本或电影剧本。
+- 你不得新增上游结构中不存在的剧情事实。
+
 ## 核心约束
 
 1. **脉冲式叙事**：每集有一个明确的"脉冲点"（情绪爆点/转折/钩子），不要平铺直叙
 2. **钩子集节奏快**：钩子集用多切镜头，沉淀集可以放慢
 3. **不允许心理描写**（短剧是视听媒介，用行为与对话表达一切）
+4. **对白压力**：对白要推进冲突或关系变化，避免说明书式复述
+5. **可拍但不拆镜**：写清动作、表情、空间关系，但不写分镜表
 
 ## 输出格式
 
 ```
 <<<SHORT_DRAMA_SCRIPT_START>>>
-## 第{N}集
+# 短剧剧本 · <序列ID>
 
-<剧本正文：场景描述 + 角色对话，行为与对白分离>
+## 第{N}集 · <集标题/功能>
+
+- 本集钩子：<一句话>
+- 情绪爆点：<一句话>
 
 ### 场景{N}. 地点 — 时间
+
+<场景描述，具体可拍，不写心理旁白。>
 
 **角色 A**
 对话内容
@@ -33,7 +48,10 @@ outputTags: ['<<<SHORT_DRAMA_SCRIPT_START>>>', '<<<SHORT_DRAMA_SCRIPT_END>>>']
 **角色 B**
 对话内容
 
-_(场景描写：用行为驱动，不写"某人觉得"、"某人想"这类心理旁白)_
+<动作或场面调度。>
+
+### 集末留扣
+<停在一个信息点、动作点或关系压力点。>
 
 <<<SHORT_DRAMA_SCRIPT_END>>>
 ```

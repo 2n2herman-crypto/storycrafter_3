@@ -31,6 +31,7 @@
 .exportGroup {
   display: flex;
   gap: 6px;
+  position: relative;
 }
 
 .exportBtn {
@@ -52,54 +53,46 @@
   cursor: not-allowed;
 }
 
-/* v7.3：自检开关行 */
-.toolbarRow {
+.exportMenu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  width: 172px;
+  padding: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-primary);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+.exportMenuTitle {
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.exportOption {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  padding: 6px 12px;
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-/* v7.3：设计完整度进度条 */
-.completenessBar {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--color-border);
-  flex-shrink: 0;
-}
-
-.completenessRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.completenessProgress {
-  flex: 1;
-  height: 6px;
-}
-
-.completenessCount {
+  gap: 6px;
+  margin-bottom: 6px;
   font-size: 11px;
   color: var(--color-text-secondary);
-  white-space: nowrap;
+  cursor: pointer;
 }
 
-.completenessFailList {
-  margin-top: 6px;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.exportOption input {
+  width: 12px;
+  height: 12px;
+  margin: 0;
 }
 
-.completenessFailItem {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  font-size: 11px;
-  color: var(--color-text-secondary);
+.exportHint {
+  margin: 4px 0 8px;
+  font-size: 10px;
+  color: var(--color-text-muted);
 }
 
 .body {

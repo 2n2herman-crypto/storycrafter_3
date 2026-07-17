@@ -51,6 +51,16 @@ function parseSequenceIds(sequenceList: string): string[] {
   return [...new Set(Array.from(sequenceList.matchAll(/^\| *(S\d+-\d+) *\|/gm), (m) => m[1]))].sort()
 }
 
+function isPrimaryWritingAssetPath(path: string): boolean {
+  return (
+    path.startsWith('novel_chapters/') ||
+    path.startsWith('short_drama_scripts/') ||
+    path.startsWith('long_drama_scripts/') ||
+    path.startsWith('film_scripts/') ||
+    path.startsWith('chapters/')
+  )
+}
+
 /**
  * 由文件系统生成唯一权威的项目进度快照。
  * 不读取聊天历史，也不让 LLM 判断文件是否存在。
@@ -99,11 +109,17 @@ export async function buildProjectStatusSnapshot(
         : `进行中（${completedSequences}/${sequenceIds.length} 个序列）`,
   })
 
-  const chapterCount = existingPaths.filter((path) => path.startsWith('chapters/')).length
+  const writingCount = existingPaths.filter(isPrimaryWritingAssetPath).length
+  const videoScriptCount = existingPaths.filter((path) => path.startsWith('video_scripts/')).length
   modules.push({
     label: '正文写作',
-    complete: chapterCount > 0,
-    detail: chapterCount > 0 ? `已开始（${chapterCount} 个正文文件）` : '未开始',
+    complete: writingCount > 0,
+    detail: writingCount > 0 ? `已开始（${writingCount} 个主写作资产）` : '未开始',
+  })
+  modules.push({
+    label: '视频脚本',
+    complete: videoScriptCount > 0,
+    detail: videoScriptCount > 0 ? `已开始（${videoScriptCount} 个视频脚本）` : '未开始',
   })
 
   const rows = modules.map(

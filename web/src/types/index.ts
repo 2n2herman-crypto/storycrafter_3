@@ -138,7 +138,7 @@ export interface AssetCardData {
   status: AssetStatus
   /** v6.4：是否被 Phase Gate 冻结（只读） */
   locked?: boolean
-  /** v6.4：正文字数（仅 chapters/* 计算） */
+  /** v6.4：正文字数（写作资产路径计算） */
   wordCount?: number
   /** v6.4：额外展示文本（如 "S1-1 所属"） */
   metaInfo?: string

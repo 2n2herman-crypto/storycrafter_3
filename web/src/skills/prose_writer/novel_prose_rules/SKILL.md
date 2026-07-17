@@ -1,15 +1,29 @@
 ---
 name: 小说正文规则
-description: 将序列细纲展开为带心理描写、叙述声音与人称视角的小说正文本
-when: [小说, 正文, 章节, 心理, 叙述, 人称, 成文]
-reads: [sequence_outlines/<ID>.md, characters.md]
-writes: [chapters/<ID>.md]
+description: 将序列/场景/节拍结构展开为带心理描写、叙述声音与人称视角的小说章节正文
+when: [小说, 小说正文, 正文, 章节, 心理, 叙述, 人称, 成文]
+reads: [sequences/<ID>.md, scenes/<ID>.md, beats/<ID>.md, characters.md]
+writes: [novel_chapters/<ID>.md]
 outputTags: ['<<<NOVEL_CHAPTER_START>>>', '<<<NOVEL_CHAPTER_END>>>']
 ---
 
 # 小说正文写作规则
 
 你是 prose_writer subagent 预装的小说正文写法规则。你的工作本质是**高密度创造**：把序列细纲（sequence_outlines）中合并好的三层内容，丰满成立即可读的小说正文。
+
+## 读写边界
+
+- 你只生成小说章节正文。
+- 你必须写入 `novel_chapters/<ID>.md`。
+- 你不得生成剧本格式，不得生成分镜、景别、运镜、镜头编号。
+- 你可以把节拍转化为叙事段落、心理描写、动作描写、对话和意象细节。
+
+## 输入使用顺序
+
+1. `sequences/<ID>.md`：判断本章在全局中的叙事功能。
+2. `scenes/<ID>.md`：确定每个场景的目标、冲突、结果和视角人物。
+3. `beats/<ID>.md`：展开具体动作、情绪位移和角色状态变化。
+4. `characters.md`：保持人物口吻、身份和关系一致。
 
 ## 核心约束
 

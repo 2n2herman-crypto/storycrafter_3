@@ -5,6 +5,7 @@ import { ChatInput } from './ChatInput'
 import { FileImporter } from './FileImporter'
 import { ChatHistory } from './ChatHistory'
 import { ModeBar } from './ModeBar'
+import { SelfCheckToggle } from './RuntimeControls'
 
 import { useChatStore } from '../../store/chatStore'
 import { useImportStore } from '../../store/importStore'
@@ -62,6 +63,7 @@ export function BottomPanel() {
       {/* 栏标题头 */}
       <div className={styles.panelHeader}>
         <div className={styles.title}>对话</div>
+        <SelfCheckToggle />
       </div>
 
       {/* 对话历史（占主高度，可滚动） */}

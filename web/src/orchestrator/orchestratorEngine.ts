@@ -53,6 +53,35 @@ const SHORT_DRAMA_SHOT_SPEC = [
   '- 镜头节奏服务于脉冲式叙事：钩子集用快切（短镜头多），沉淀集可放慢',
 ].join('\n')
 
+type WriterOutputKind =
+  | 'novel_chapter'
+  | 'short_drama_script'
+  | 'long_drama_script'
+  | 'film_script'
+  | 'video_script'
+
+function getWriterOutputKind(profile: ProductProfile | null, skillId: string): WriterOutputKind {
+  if (skillId === 'video_shot_script_rules') return 'video_script'
+  if (!profile || profile.kind === 'novel') return 'novel_chapter'
+  if (profile.kind === 'short_drama') return 'short_drama_script'
+  if (profile.kind === 'long_drama') return 'long_drama_script'
+  return 'film_script'
+}
+
+function isPrimaryWritingAssetPath(path: string): boolean {
+  return (
+    path.startsWith('novel_chapters/') ||
+    path.startsWith('short_drama_scripts/') ||
+    path.startsWith('long_drama_scripts/') ||
+    path.startsWith('film_scripts/') ||
+    path.startsWith('chapters/')
+  )
+}
+
+function isVideoScriptIntent(instruction: string): boolean {
+  return /视频脚本|分镜|镜头|景别|运镜|拍摄脚本|视听|时长/i.test(instruction)
+}
+
 /**
  * 前置需求合并指令（v5.5 机制 A）
  *
@@ -830,28 +859,85 @@ export class OrchestratorEngine {
     return map
   }
 
-  /**
-   * v6.9 按产品解析序列正文落盘路径。
-   * - one_to_many(短剧)：chapters/E01-E12.md（全局集号区间）
-   * - one_to_one(长剧)：chapters/E05.md（单集）
-   * - none(小说/剧本)：chapters/<seqId>.md（不变）
-   * 守 INV-3：用 profile.sequenceToEpisode 分支，不加 ProductProfile 字段。
-   */
-  private resolveChapterPath(
+  private resolveWriterAssetId(
     seqId: string,
     episodeRange: Map<string, [number, number]>,
   ): string {
     const profile = this.profileLock
-    if (!profile || profile.sequenceToEpisode === 'none') {
-      return `chapters/${seqId}.md`
-    }
+    if (!profile || profile.sequenceToEpisode === 'none') return seqId
     const range = episodeRange.get(seqId)
-    if (!range) return `chapters/${seqId}.md` // 兜底
+    if (!range) return seqId
     const [start, end] = range
-    if (profile.sequenceToEpisode === 'one_to_many') {
-      return `chapters/E${pad2(start)}-E${pad2(end)}.md`
+    if (profile.sequenceToEpisode === 'one_to_many') return `E${pad2(start)}-E${pad2(end)}`
+    return `E${pad2(start)}`
+  }
+
+  private resolveVideoProductDir(): 'short_drama' | 'long_drama' | 'film' {
+    if (this.profileLock?.kind === 'short_drama') return 'short_drama'
+    if (this.profileLock?.kind === 'long_drama') return 'long_drama'
+    return 'film'
+  }
+
+  private resolveWriterOutputPath(
+    seqId: string,
+    skill: SkillSpec,
+    episodeRange: Map<string, [number, number]>,
+  ): string {
+    const outputKind = getWriterOutputKind(this.profileLock, skill.skillId)
+    const assetId = this.resolveWriterAssetId(seqId, episodeRange)
+
+    switch (outputKind) {
+      case 'novel_chapter':
+        return `novel_chapters/${seqId}.md`
+      case 'short_drama_script':
+        return `short_drama_scripts/${assetId}.md`
+      case 'long_drama_script':
+        return `long_drama_scripts/${assetId}.md`
+      case 'film_script':
+        return `film_scripts/${seqId}.md`
+      case 'video_script':
+        return `video_scripts/${this.resolveVideoProductDir()}/${assetId}.md`
     }
-    return `chapters/E${pad2(start)}.md` // one_to_one（长剧）
+  }
+
+  private async buildProjectEpisodeRangeMap(): Promise<Map<string, [number, number]>> {
+    const seqListMd = await safeRead(this.fileManager, 'sequence_list.md')
+    return this.buildEpisodeRangeMap(this.parseSequenceIds(seqListMd))
+  }
+
+  private resolvePrimaryScriptSkill(): SkillSpec | undefined {
+    const skills = getSkills('prose_writer')
+    const skillId =
+      this.profileLock?.kind === 'short_drama'
+        ? 'short_drama_script_rules'
+        : this.profileLock?.kind === 'long_drama'
+          ? 'long_drama_script_rules'
+          : this.profileLock?.kind === 'novel'
+            ? 'novel_prose_rules'
+            : 'film_script_rules'
+    return skills.find((skill) => skill.skillId === skillId)
+  }
+
+  private async buildWriterPathHint(seqId: string): Promise<string> {
+    const skills = getSkills('prose_writer')
+    const episodeRange = await this.buildProjectEpisodeRangeMap()
+    const primarySkill = this.resolvePrimaryScriptSkill()
+    const videoSkill = skills.find((skill) => skill.skillId === 'video_shot_script_rules')
+    const primaryPath = primarySkill
+      ? this.resolveWriterOutputPath(seqId, primarySkill, episodeRange)
+      : ''
+    const videoPath = videoSkill && this.profileLock?.kind !== 'novel'
+      ? this.resolveWriterOutputPath(seqId, videoSkill, episodeRange)
+      : ''
+
+    return [
+      '<writer_asset_paths>',
+      `  <target_sequence>${seqId}</target_sequence>`,
+      primaryPath ? `  <primary_output>${primaryPath}</primary_output>` : '',
+      videoPath ? `  <video_output>${videoPath}</video_output>` : '',
+      '  <note>读取或写入写作资产时必须使用这里给出的真实路径；不要自行把序列号拼成旧 chapters 路径。</note>',
+      '</writer_asset_paths>',
+    ].filter(Boolean).join('\n')
   }
 
   /**
@@ -877,7 +963,11 @@ export class OrchestratorEngine {
     // ② 读上下文（按 Skill.reads，支持 /*.md glob 展开 v6.3）
     const files: Record<string, string> = {}
     const allPaths = await this.fileManager.listAssetFiles()
-    const { reads: expandedReads, aggregatedLabel } = expandGlobs(skill.reads, allPaths)
+    const productDir = this.resolveVideoProductDir()
+    const resolvedReads = skill.reads.map((path) =>
+      path.replace(/<ID>/g, seqId).replace(/<target>/g, seqId).replace(/<product>/g, productDir),
+    )
+    const { reads: expandedReads, aggregatedLabel } = expandGlobs(resolvedReads, allPaths)
     for (const path of expandedReads) {
       if (!(path in files)) {
         files[path] = await safeRead(this.fileManager, path)
@@ -913,7 +1003,7 @@ export class OrchestratorEngine {
 
     // v6.4：紧前章节正文，供 Writer 感知实际文风（仅 CREATE 模式注入）
     const chapterPaths = allPaths
-      .filter(a => a.path.startsWith('chapters/') && a.path.endsWith('.md') && a.exists)
+      .filter(a => isPrimaryWritingAssetPath(a.path) && a.path.endsWith('.md') && a.exists)
       .map(a => a.path)
       .sort()
     const chapterIdx = chapterPaths.findIndex(p => p === chapterPath)
@@ -1005,7 +1095,7 @@ export class OrchestratorEngine {
     episodeRange: Map<string, [number, number]>,
   ): Promise<ToolResult> {
     const skill = selectSkill(subagent.id, instruction)
-    const chapterPath = this.resolveChapterPath(seqId, episodeRange)
+    const chapterPath = this.resolveWriterOutputPath(seqId, skill, episodeRange)
     const splitUnit = this.profileLock?.proseSplitUnit ?? 'none'
     const seqBeatsDoc = await safeRead(this.fileManager, `sequences/${seqId}.md`)
 
@@ -1215,11 +1305,48 @@ export class OrchestratorEngine {
     subagent: SubagentSpec,
     instruction: string,
     target?: string,
+    skipVideoPrerequisite = false,
   ): Promise<ToolResult> {
+    const prerequisiteWrites: string[] = []
+    if (
+      subagent.id === 'prose_writer' &&
+      target &&
+      !skipVideoPrerequisite &&
+      this.profileLock?.kind !== 'novel' &&
+      isVideoScriptIntent(instruction)
+    ) {
+      const primarySkill = this.resolvePrimaryScriptSkill()
+      if (primarySkill) {
+        const episodeRange = await this.buildProjectEpisodeRangeMap()
+        const primaryPath = this.resolveWriterOutputPath(target, primarySkill, episodeRange)
+        const existingScript = await safeRead(this.fileManager, primaryPath)
+        if (!existingScript.trim()) {
+          this.emit('tool_start', {
+            toolId: subagent.id,
+            toolName: subagent.name,
+            skillId: primarySkill.skillId,
+            skillName: primarySkill.name,
+            message: `[${target}] 缺少产品剧本，先自动生成剧本`,
+          })
+          const scriptResult = await this.runSubagentWithIsolatedContext(
+            subagent,
+            '根据叙事结构生成当前产品的专业剧本；只输出产品主剧本，不输出二级拍摄稿。',
+            target,
+            true,
+          )
+          if (!scriptResult.success) return scriptResult
+          prerequisiteWrites.push(...(scriptResult.writes ?? []))
+        }
+      }
+    }
+
     const subagentSkills = getSkills(subagent.id)
-    const preloadedSkills = (subagent.skills ?? [])
+    let preloadedSkills = (subagent.skills ?? [])
       .map(skillId => subagentSkills.find(s => s.skillId === skillId))
       .filter((s): s is SkillSpec => s !== undefined)
+    if (subagent.id === 'prose_writer') {
+      preloadedSkills = this.filterWriterSkillsByProfile(preloadedSkills)
+    }
 
     // 拼装 system prompt = subagent 角色前缀 + 全部预装 skill 正文
     const preamble = subagent.preamble || ''
@@ -1230,10 +1357,14 @@ export class OrchestratorEngine {
     const structuralScan = subagent.id === 'quality_checker'
       ? await this.runStructuralScanIfNeeded(instruction)
       : ''
+    const writerPathHint = subagent.id === 'prose_writer' && target
+      ? await this.buildWriterPathHint(target)
+      : ''
 
     // 目标序列注入 instruction
     const userContent = [
       target ? `${instruction}\n\n目标序列：${target}` : instruction,
+      writerPathHint,
       structuralScan,
     ].filter(Boolean).join('\n\n')
 
@@ -1285,7 +1416,11 @@ export class OrchestratorEngine {
     }
 
     // 构筑/写作 subagent：走 outputValidator 校验 + 落盘
-    return this.validateAndPersist(subagent, instruction, result.finalText, target)
+    const persisted = await this.validateAndPersist(subagent, instruction, result.finalText, target)
+    return {
+      ...persisted,
+      writes: [...prerequisiteWrites, ...(persisted.writes ?? [])],
+    }
   }
 
   /**
@@ -1301,9 +1436,13 @@ export class OrchestratorEngine {
   ): SkillSpec | undefined {
     const subagentSkills = getSkills(subagent.id)
     const preloadedIds = subagent.skills ?? []
-    const candidates = preloadedIds.length > 0
+    let candidates = preloadedIds.length > 0
       ? preloadedIds.map(id => subagentSkills.find(s => s.skillId === id)).filter((s): s is SkillSpec => s !== undefined)
       : subagentSkills
+
+    if (subagent.id === 'prose_writer') {
+      candidates = this.filterWriterSkillsByProfile(candidates)
+    }
 
     if (candidates.length === 0) return undefined
     if (candidates.length === 1) return candidates[0]
@@ -1326,6 +1465,19 @@ export class OrchestratorEngine {
     return best
   }
 
+  private filterWriterSkillsByProfile(skills: SkillSpec[]): SkillSpec[] {
+    const allowed =
+      this.profileLock?.kind === 'novel'
+        ? ['novel_prose_rules']
+        : this.profileLock?.kind === 'short_drama'
+          ? ['short_drama_script_rules', 'video_shot_script_rules']
+          : this.profileLock?.kind === 'long_drama'
+            ? ['long_drama_script_rules', 'video_shot_script_rules']
+            : ['film_script_rules', 'video_shot_script_rules']
+
+    return skills.filter((skill) => allowed.includes(skill.skillId))
+  }
+
   /**
    * v7.3：构筑/写作 subagent 产出校验与落盘。
    *
@@ -1346,9 +1498,11 @@ export class OrchestratorEngine {
       return { success: false, error: `未找到 ${subagent.id} 的可用 Skill`, skillName: subagent.name }
     }
 
-    // 写入路径由 skill.writes[0] + target 拼接
+    // 写入路径由目标 skill 与当前产品共同决定；writer 使用 v7.8 新目录，其他 subagent 保持旧占位替换。
     const writePath = target
-      ? targetSkill.writes[0].replace(/<ID>/g, target).replace(/<target>/g, target)
+      ? subagent.id === 'prose_writer'
+        ? this.resolveWriterOutputPath(target, targetSkill, await this.buildProjectEpisodeRangeMap())
+        : targetSkill.writes[0].replace(/<ID>/g, target).replace(/<target>/g, target)
       : targetSkill.writes[0]
 
     const specView: SkillSpec = { ...targetSkill, writes: [writePath] }

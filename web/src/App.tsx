@@ -41,15 +41,38 @@ async function inferLegacyRuntimeState(
 ): Promise<{ productKind: ProductKind | null; phase: 'designing' | 'writing' }> {
   const files = await fm.listAssetFiles()
   const paths = files.filter((f) => f.exists).map((f) => f.path)
-  const hasShortDramaChapters = paths.some((p) => /^chapters\/E\d+-E\d+\.md$/.test(p))
-  const hasLongDramaChapters = paths.some((p) => /^chapters\/E\d+\.md$/.test(p))
-  const hasChapters = paths.some((p) => p.startsWith('chapters/'))
+  const hasShortDramaChapters = paths.some((p) =>
+    p.startsWith('short_drama_scripts/') ||
+    p.startsWith('video_scripts/short_drama/') ||
+    /^chapters\/E\d+-E\d+\.md$/.test(p),
+  )
+  const hasLongDramaChapters = paths.some((p) =>
+    p.startsWith('long_drama_scripts/') ||
+    p.startsWith('video_scripts/long_drama/') ||
+    /^chapters\/E\d+\.md$/.test(p),
+  )
+  const hasFilmScripts = paths.some((p) =>
+    p.startsWith('film_scripts/') ||
+    p.startsWith('video_scripts/film/'),
+  )
+  const hasWritingAssets = paths.some((p) =>
+    p.startsWith('chapters/') ||
+    p.startsWith('novel_chapters/') ||
+    p.startsWith('short_drama_scripts/') ||
+    p.startsWith('long_drama_scripts/') ||
+    p.startsWith('film_scripts/') ||
+    p.startsWith('video_scripts/'),
+  )
 
   let productKind: ProductKind | null = hasShortDramaChapters
     ? 'short_drama'
     : hasLongDramaChapters
       ? 'long_drama'
-      : null
+      : hasFilmScripts
+        ? 'screenplay'
+        : paths.some((p) => p.startsWith('novel_chapters/'))
+          ? 'novel'
+          : null
 
   if (!productKind) {
     const samples = await Promise.all(
@@ -69,7 +92,7 @@ async function inferLegacyRuntimeState(
     else if (new RegExp(`${explicitType}小说`).test(corpus)) productKind = 'novel'
   }
 
-  return { productKind, phase: hasChapters ? 'writing' : 'designing' }
+  return { productKind, phase: hasWritingAssets ? 'writing' : 'designing' }
 }
 
 function App() {
@@ -192,7 +215,13 @@ function App() {
     if (prevPhaseRef.current === 'designing' && phase === 'writing') {
       // 进入写作期：若有已生成的章节，自动选中第一个
       const cards = useAssetStore.getState().getAssetList()
-      const firstChapter = cards.find((c) => c.path.startsWith('chapters/'))
+      const firstChapter = cards.find((c) =>
+        c.path.startsWith('novel_chapters/') ||
+        c.path.startsWith('short_drama_scripts/') ||
+        c.path.startsWith('long_drama_scripts/') ||
+        c.path.startsWith('film_scripts/') ||
+        c.path.startsWith('chapters/'),
+      )
       if (firstChapter) {
         setSelectedCard(firstChapter.path)
       }
@@ -219,6 +248,7 @@ function App() {
       selectedPath={selectedCard}
       onSelect={setSelectedCard}
       wordExportAvailable={currentProject !== null}
+      projectName={currentProject?.name}
       fileManager={fileManager}
       projectId={currentProject?.id}
     />,

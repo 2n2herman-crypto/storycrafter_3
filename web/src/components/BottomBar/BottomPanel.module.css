@@ -35,12 +35,97 @@
   letter-spacing: 0.12em;
 }
 
+.selfCheckBtn {
+  margin-left: auto;
+  padding: 3px 12px;
+  font-size: 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.32);
+  color: var(--color-brown);
+  cursor: pointer;
+}
+
+.selfCheckBtn:hover {
+  background: var(--color-bg-tertiary, rgba(0, 0, 0, 0.04));
+}
+
 .historyArea {
   flex: 1;
   min-height: 0;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+
+.designProgress {
+  flex-shrink: 0;
+  padding: 9px 14px 8px;
+  border-top: 1px solid var(--color-border);
+}
+
+.designProgressAsset {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.designProgressMeta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-brown);
+}
+
+.designProgressRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.designProgressBar {
+  flex: 1;
+  height: 6px;
+}
+
+.designProgressBtn,
+.designProgressRetryBtn {
+  padding: 3px 9px;
+  font-size: 11px;
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.28);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.designProgressBtn:disabled,
+.designProgressRetryBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.designProgressBtn:hover:not(:disabled),
+.designProgressRetryBtn:hover:not(:disabled) {
+  background: var(--color-bg-tertiary, rgba(0, 0, 0, 0.04));
+}
+
+.designProgressFails {
+  margin-top: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.designProgressFailItem {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--color-text-secondary);
 }
 
 .controlsRow {

@@ -1,37 +1,51 @@
 ---
 name: 视频脚本规则
-description: 从序列细纲端到端产出含分镜/景别/运镜/时长估算的视频脚本（非 JSON，Markdown 结构化镜头文本）
-when: [视频, 脚本, 分镜, 景别, 运镜, 镜头, 视听, 时长]
-reads: [sequence_outlines/<ID>.md, characters.md]
-writes: [chapters/<ID>.md]
+description: 将已有产品剧本转译为含分镜/景别/运镜/时长估算的视频脚本，不新增剧情事实
+when: [视频, 视频脚本, 分镜, 景别, 运镜, 镜头, 拍摄脚本, 视听, 时长]
+reads: [short_drama_scripts/<ID>.md, long_drama_scripts/<ID>.md, film_scripts/<ID>.md, sequences/<ID>.md, scenes/<ID>.md, beats/<ID>.md, characters.md]
+writes: [video_scripts/<product>/<ID>.md]
 outputTags: ['<<<VIDEO_SCRIPT_START>>>', '<<<VIDEO_SCRIPT_END>>>']
 references: [shot_split_rules, visual_description_rules, duration_estimation, beat_to_shot_mapping]
 ---
 
 # 视频脚本写作规则
 
-你是 prose_writer subagent 预装的视频脚本写法规则。你的职责是直接消费序列细纲（sequence_outlines），一步产出包含分镜/景别/运镜/时长等视听元素的结构化视频脚本——不经过先写剧本再转脚本的中间步骤。
+你是 prose_writer subagent 预装的视频脚本写法规则。你的职责是把已有产品剧本转译为可拍的视频/分镜脚本。
+
+## 读写边界
+
+- 你必须优先读取当前产品的剧本资产：
+  - 短剧：`short_drama_scripts/<ID>.md`
+  - 长剧：`long_drama_scripts/<ID>.md`
+  - 电影：`film_scripts/<ID>.md`
+- `sequences/`、`scenes/`、`beats/` 只作为校准材料，不能替代剧本。
+- 你必须写入 `video_scripts/<product>/<ID>.md`。
+- 你不得覆盖产品剧本。
+- 你不得新增剧情事实、改变角色动机、改变场景结果。
 
 ## 核心流程
 
-1. 读取引擎拼接好的序列细纲（已在输入上下文中）
-2. 按需要读取 references 目录下的参考资料（输入处理方式见 beat_to_shot_mapping.md）
-3. 按场景分段处理细纲：取时空边界/场景目标/冲突作为宏观背景 → 逐节拍推进拆解镜头 → 结合分镜拆分原则与视觉转化铁律自主判断每拍拆几个镜头
-4. 时长估算按公式逐镜头计算并标注依据
+1. 从产品剧本中抽取场景、动作、对白、道具、空间关系和情绪压力。
+2. 用叙事结构资产校验：镜头表达不得偏离场景目标、节拍情绪和角色状态位移。
+3. 将剧本动作拆成镜头，逐镜头标注景别、运镜、视角、主体描述、台词/音效和预估时长。
+4. 每个镜头只承载一个主要视觉焦点。
+5. 重要对白可保留，但必须拆到对应镜头中，不做整段贴入。
 
 ## 输出格式
 
 ```
 <<<VIDEO_SCRIPT_START>>>
-# 视频脚本 · <序列ID>
+# 视频脚本 · <产品> · <序列ID>
 
 ## 场景 SC-{序列ID}-{nn} · <场景功能>
 
 ### 镜头 1
+- 镜头意图：<这个镜头要让观众看见/理解/感受到什么>
 - 景别：中景
 - 运镜：固定
 - 视角：平视
 - 主体描述：<结构化连贯长句>
+- 关键动作：<镜头内发生的具体动作>
 - 光影/氛围：<如无必要可省略>
 - 台词/音效：<若有>
 - 预估时长：<按时长估算公式，标注依据如"台词18字÷8+1=3s">

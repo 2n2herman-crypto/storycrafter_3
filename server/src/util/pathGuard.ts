@@ -4,7 +4,7 @@ import path from 'node:path'
  * 校验资产相对路径并解析为绝对路径。
  *
  * v6 契约原规定 `[A-Za-z0-9_.-]+\.md` 不含子目录，但 v6.1 起实际产物含
- * `sequences/<ID>.md`、`chapters/<ID>.md`、`_seq/<ID>/*.md` 等子目录，
+ * `sequences/<ID>.md`、`novel_chapters/<ID>.md`、`video_scripts/<product>/<ID>.md` 等子目录，
  * 故放宽为「允许单层/多层子目录 + 禁绝对路径与 `..` + resolve/startsWith 兜底」。
  */
 export function resolveAssetPath(assetsRoot: string, relPath: string): string {

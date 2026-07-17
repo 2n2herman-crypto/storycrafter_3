@@ -23,6 +23,26 @@ function buildAssetMeta(): Record<string, { group: string }> {
 
 const ASSET_META = buildAssetMeta()
 
+const PRIMARY_WRITING_DIRS = [
+  'novel_chapters/',
+  'short_drama_scripts/',
+  'long_drama_scripts/',
+  'film_scripts/',
+  'chapters/',
+]
+
+function startsWithAny(path: string, prefixes: string[]): boolean {
+  return prefixes.some((prefix) => path.startsWith(prefix))
+}
+
+function isPrimaryWritingAsset(path: string): boolean {
+  return startsWithAny(path, PRIMARY_WRITING_DIRS)
+}
+
+function isWritingAsset(path: string): boolean {
+  return isPrimaryWritingAsset(path) || path.startsWith('video_scripts/')
+}
+
 // ===== 文件名 → 中文展示名 映射 =====
 
 const FILE_LABELS: Record<string, string> = {
@@ -52,8 +72,10 @@ interface AssetState {
  * v6.3: 文件名 → 展示标签的解析规则
  * - 先查静态 FILE_LABELS
  * - sequences/S1-1.md → "场记 S1-1"（v7.1）
- * - chapters/S1-1.md → "正文 S1-1"（v7.1）
- * - chapters/E01-E12.md → "第1-12集"（v6.9 短剧）/ chapters/E05.md → "第5集"（v6.9 长剧）
+ * - novel_chapters/S1-1.md → "小说章节 S1-1"
+ * - short_drama_scripts/E01-E12.md → "短剧剧本 第1-12集"
+ * - video_scripts/short_drama/E01-E12.md → "短剧视频脚本 第1-12集"
+ * - chapters/E01-E12.md → "旧正文 第1-12集"（历史兼容）
  * - 其余回退到去 .md 后缀
  */
 function computeLabel(path: string): string {
@@ -66,17 +88,37 @@ function computeLabel(path: string): string {
   if (beatMatch) return `节拍 ${beatMatch[1]}`
   const outlineMatch = path.match(/^sequence_outlines\/(.+)\.md$/)
   if (outlineMatch) return `序列细纲 ${outlineMatch[1]}`
+  const novelMatch = path.match(/^novel_chapters\/(.+)\.md$/)
+  if (novelMatch) return `小说章节 ${formatWritingAssetId(novelMatch[1])}`
+  const shortDramaMatch = path.match(/^short_drama_scripts\/(.+)\.md$/)
+  if (shortDramaMatch) return `短剧剧本 ${formatWritingAssetId(shortDramaMatch[1])}`
+  const longDramaMatch = path.match(/^long_drama_scripts\/(.+)\.md$/)
+  if (longDramaMatch) return `长剧剧本 ${formatWritingAssetId(longDramaMatch[1])}`
+  const filmMatch = path.match(/^film_scripts\/(.+)\.md$/)
+  if (filmMatch) return `电影剧本 ${formatWritingAssetId(filmMatch[1])}`
+  const videoMatch = path.match(/^video_scripts\/([^/]+)\/(.+)\.md$/)
+  if (videoMatch) {
+    const productLabel =
+      videoMatch[1] === 'short_drama'
+        ? '短剧'
+        : videoMatch[1] === 'long_drama'
+          ? '长剧'
+          : '电影'
+    return `${productLabel}视频脚本 ${formatWritingAssetId(videoMatch[2])}`
+  }
   const chMatch = path.match(/^chapters\/(.+)\.md$/)
   if (chMatch) {
-    const name = chMatch[1]
-    // v6.9：短剧 E01-E12 → "第1-12集"，长剧 E05 → "第5集"，其余 chapters/<seqId>.md → "正文 <seqId>"
-    const range = name.match(/^E(\d+)-E(\d+)$/)
-    if (range) return `第${Number(range[1])}-${Number(range[2])}集`
-    const single = name.match(/^E(\d+)$/)
-    if (single) return `第${Number(single[1])}集`
-    return `正文 ${name}`
+    return `旧正文 ${formatWritingAssetId(chMatch[1])}`
   }
   return path.replace(/\.md$/, '')
+}
+
+function formatWritingAssetId(name: string): string {
+  const range = name.match(/^E(\d+)-E(\d+)$/)
+  if (range) return `第${Number(range[1])}-${Number(range[2])}集`
+  const single = name.match(/^E(\d+)$/)
+  if (single) return `第${Number(single[1])}集`
+  return name
 }
 
 // ===== Store 类型 =====
@@ -246,7 +288,7 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
           ? '细纲'
           : path.startsWith('sequence_outlines/')
             ? '序列细纲合并稿'
-            : path.startsWith('chapters/')
+            : isWritingAsset(path)
               ? '剧本'
               : ''
       return {
@@ -257,8 +299,8 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
         // v6.4 扩展
         locked: phaseStore.isLockedPath(path),
         wordCount: state.wordCount,
-        metaInfo: path.startsWith('chapters/')
-          ? path.replace(/^chapters\//, '').replace(/\.md$/, '')
+        metaInfo: isWritingAsset(path)
+          ? path.replace(/^[^/]+\//, '').replace(/\.md$/, '')
           : undefined,
       }
     })
@@ -290,9 +332,9 @@ export const useAssetStore = create<AssetStore>((set, get) => ({
 
 // ===== v6.4 辅助函数 =====
 
-/** 计算中文汉字数（仅 chapters/* 路径计算，其余返回 undefined） */
+/** 计算中文汉字数（写作资产路径计算，其余返回 undefined） */
 function computeWordCount(path: string, content: string): number | undefined {
-  if (!path.startsWith('chapters/')) return undefined
+  if (!isWritingAsset(path)) return undefined
   if (!content) return 0
   const chineseChars = content.match(/[一-鿿]/g)
   return chineseChars ? chineseChars.length : 0

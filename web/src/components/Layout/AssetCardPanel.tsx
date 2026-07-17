@@ -4,12 +4,15 @@ import { AssetCard } from '../AssetCard'
 import { useUIStore } from '../../store/uiStore'
 import { usePhaseStore } from '../../store/phaseStore'
 import { useAssetStore } from '../../store/assetStore'
-import { useSelfCheckStore } from '../../store/selfCheckStore'
-import { mergeAllSequenceOutlines, mergeSingleSequenceOutline, type MergeResult } from '../../orchestrator/outlineMerger'
+import { DesignProgressBar } from '../BottomBar/RuntimeControls'
 import type { FileManager } from '../../orchestrator/fileManager'
-import { buildAllMarkdown, downloadText, triggerDownload } from '../../utils/exportMd'
+import {
+  buildAssetExportZip,
+  buildExportArchiveName,
+  triggerDownload,
+  type ExportFormat,
+} from '../../utils/exportMd'
 import { exportDocx } from '../../api/importExport'
-import { updateProject } from '../../api/projects'
 import styles from './AssetCardPanel.module.css'
 
 interface AssetCardPanelProps {
@@ -18,7 +21,9 @@ interface AssetCardPanelProps {
   onSelect: (path: string) => void
   /** v7.1 改动5：Word 全量导出是否可用（降级模式无后端 → 关闭） */
   wordExportAvailable?: boolean
-  /** v7.3：设计→写作触发链路需要直接操作 FileManager（合并落盘），设计期才传入 */
+  /** v7.9.1：结构化导出包根目录名 */
+  projectName?: string
+  /** v7.3/v7.9.1：设计进度底部条需要直接操作当前项目文件 */
   fileManager?: FileManager | null
   /** v7.4：进入写作模式后同步持久化项目阶段 */
   projectId?: string
@@ -190,127 +195,47 @@ function CollapsibleSection({
   )
 }
 
-// ===== v7.3 设计完整度进度条 + 进入写作模式 =====
-
-interface DesignCompletenessBarProps {
-  fileManager: FileManager | null | undefined
-  projectId?: string
-}
-
-/**
- * v7.3：显式的进度条+按钮触发机制，取代旧模型里靠 Orchestrator 语义判断"是否该进入写作期"。
- * 分子=已落盘非空的 sequences/scenes/beats 文件数，分母=序列数×3；满值后按钮可点，
- * 点击→确认弹窗→逐序列机械合并+锁定→整体 phaseStore.lock() 切写作模式。
- */
-function DesignCompletenessBar({ fileManager, projectId }: DesignCompletenessBarProps) {
-  const { numerator, denominator, seqIds } = useAssetStore((s) => s.getDesignCompleteness())
-  const [merging, setMerging] = useState(false)
-  const [mergeResult, setMergeResult] = useState<MergeResult | null>(null)
-
-  const canEnter = denominator > 0 && numerator === denominator && !merging
-
-  const handleEnterWritingMode = async () => {
-    if (!fileManager) return
-    const confirmed = window.confirm(
-      `即将合并并锁定以下 ${seqIds.length} 个序列的序列层/场景层/节拍层：\n${seqIds.join('、')}\n\n合并后这些文件将不可编辑，确认继续？`,
-    )
-    if (!confirmed) return
-
-    setMerging(true)
-    try {
-      const result = await mergeAllSequenceOutlines(fileManager)
-      setMergeResult(result)
-      for (const seqId of result.succeeded) {
-        usePhaseStore.getState().lockSequenceFiles(seqId)
-      }
-      if (result.succeeded.length > 0) {
-        await usePhaseStore.getState().lock(fileManager)
-        if (projectId) await updateProject(projectId, { phase: 'writing' })
-        await useAssetStore.getState().refreshAllFiles()
-      }
-    } catch (e) {
-      alert(`进入写作模式失败：${e instanceof Error ? e.message : String(e)}`)
-    } finally {
-      setMerging(false)
-    }
-  }
-
-  const handleRetrySingle = async (seqId: string) => {
-    if (!fileManager) return
-    const result = await mergeSingleSequenceOutline(fileManager, seqId)
-    if (result.ok) {
-      usePhaseStore.getState().lockSequenceFiles(seqId)
-      await useAssetStore.getState().refreshAllFiles()
-      setMergeResult((prev) =>
-        prev ? { succeeded: [...prev.succeeded, seqId], failed: prev.failed.filter((f) => f.seqId !== seqId) } : prev,
-      )
-    } else {
-      alert(`序列 ${seqId} 仍未通过：${result.reason}`)
-    }
-  }
-
-  if (denominator === 0) return null
-
-  return (
-    <div className={styles.completenessBar}>
-      <div className={styles.completenessRow}>
-        <progress className={styles.completenessProgress} value={numerator} max={denominator} />
-        <span className={styles.completenessCount}>{numerator}/{denominator}</span>
-        <button
-          className={styles.exportBtn}
-          disabled={!canEnter}
-          onClick={handleEnterWritingMode}
-          title={canEnter ? '合并全部序列细纲并进入写作模式' : '需要全部序列的序列层/场景层/节拍层生成完毕'}
-        >
-          {merging ? '合并中…' : '进入写作模式'}
-        </button>
-      </div>
-      {mergeResult && mergeResult.failed.length > 0 && (
-        <div className={styles.completenessFailList}>
-          {mergeResult.failed.map(({ seqId, reason }) => (
-            <div key={seqId} className={styles.completenessFailItem}>
-              <span>序列 {seqId} 未通过：{reason}</span>
-              <button className={styles.exportBtn} onClick={() => handleRetrySingle(seqId)}>重试</button>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  )
-}
-
 // ===== 全量导出头部 =====
 
 interface ExportHeaderProps {
   cards: AssetCardData[]
   wordExportAvailable?: boolean
+  projectName?: string
 }
 
 /**
- * v7.1 改动5：资产面板全量导出。
- * 把所有已生成/已修改资产的内容按卡片顺序合并为单一 Markdown（buildAllMarkdown），
- * MD 纯前端下载；Word 复用后端 /api/export/docx 单次转换（降级模式关闭）。
+ * v7.9.1：资产面板全量导出收缩为单一入口。
+ * 导出时先选择 Markdown / Word，再下载按资产类型分目录的 zip 包。
  */
-function ExportHeader({ cards, wordExportAvailable }: ExportHeaderProps) {
+function ExportHeader({ cards, wordExportAvailable, projectName }: ExportHeaderProps) {
   const [exporting, setExporting] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const [format, setFormat] = useState<ExportFormat>('markdown')
   const assets = useAssetStore((s) => s.assets)
 
   const items = cards
-    .map((c) => ({ title: c.filename, content: assets[c.path]?.content ?? '' }))
+    .map((c) => ({ path: c.path, title: c.filename, content: assets[c.path]?.content ?? '' }))
     .filter((it) => it.content.trim())
   const hasContent = items.length > 0
 
-  const handleExportMd = () => {
-    downloadText('全量资产.md', buildAllMarkdown(items))
-  }
+  useEffect(() => {
+    if (!wordExportAvailable && format === 'word') {
+      setFormat('markdown')
+    }
+  }, [format, wordExportAvailable])
 
-  const handleExportWord = async () => {
+  const handleExport = async (selectedFormat: ExportFormat) => {
+    setFormat(selectedFormat)
     setExporting(true)
     try {
-      const blob = await exportDocx(buildAllMarkdown(items), '全量资产')
-      triggerDownload(blob, '全量资产.docx')
+      const blob = await buildAssetExportZip(items, selectedFormat, {
+        rootName: projectName ? `${projectName}_资产导出` : undefined,
+        toWord: exportDocx,
+      })
+      triggerDownload(blob, buildExportArchiveName(selectedFormat, projectName ? `${projectName}_资产导出` : undefined))
+      setMenuOpen(false)
     } catch (e) {
-      alert(`Word 导出失败: ${e instanceof Error ? e.message : String(e)}`)
+      alert(`导出失败: ${e instanceof Error ? e.message : String(e)}`)
     } finally {
       setExporting(false)
     }
@@ -322,44 +247,38 @@ function ExportHeader({ cards, wordExportAvailable }: ExportHeaderProps) {
       <div className={styles.exportGroup}>
         <button
           className={styles.exportBtn}
-          onClick={handleExportMd}
-          disabled={!hasContent}
-          title={hasContent ? '导出全部资产为 Markdown' : '暂无可导出内容'}
+          onClick={() => setMenuOpen((open) => !open)}
+          disabled={!hasContent || exporting}
+          title={hasContent ? '导出全部资产包' : '暂无可导出内容'}
         >
-          全量 MD
+          {exporting ? '导出中...' : '导出'}
         </button>
-        <button
-          className={styles.exportBtn}
-          onClick={handleExportWord}
-          disabled={!hasContent || exporting || !wordExportAvailable}
-          title={
-            !wordExportAvailable
-              ? '降级模式下 Word 导出不可用'
-              : hasContent
-                ? '导出全部资产为 Word'
-                : '暂无可导出内容'
-          }
-        >
-          {exporting ? '导出中...' : '全量 Word'}
-        </button>
+        {menuOpen && (
+          <div className={styles.exportMenu}>
+            <div className={styles.exportMenuTitle}>选择格式后下载</div>
+            <label className={styles.exportOption}>
+              <input
+                type="checkbox"
+                checked={format === 'markdown'}
+                disabled={exporting}
+                onChange={() => void handleExport('markdown')}
+              />
+              <span>Markdown 资产包</span>
+            </label>
+            <label className={styles.exportOption} title={wordExportAvailable ? '导出为 Word 资产包' : '降级模式下 Word 导出不可用'}>
+              <input
+                type="checkbox"
+                checked={format === 'word'}
+                disabled={exporting || !wordExportAvailable}
+                onChange={() => void handleExport('word')}
+              />
+              <span>Word 资产包</span>
+            </label>
+            {!wordExportAvailable && <div className={styles.exportHint}>当前模式下 Word 导出不可用。</div>}
+          </div>
+        )}
       </div>
     </div>
-  )
-}
-
-// ===== v7.3 自检模式开关 =====
-
-function SelfCheckToggle() {
-  const selfCheckEnabled = useSelfCheckStore((s) => s.selfCheckEnabled)
-  const toggle = useSelfCheckStore((s) => s.toggle)
-  return (
-    <button
-      className={styles.exportBtn}
-      onClick={toggle}
-      title={selfCheckEnabled ? '点击关闭自检模式（质检 subagent 将不再参与调度）' : '点击开启自检模式'}
-    >
-      {selfCheckEnabled ? '🩺 自检：开' : '🩺 自检：关'}
-    </button>
   )
 }
 
@@ -370,6 +289,7 @@ export function AssetCardPanel({
   selectedPath,
   onSelect,
   wordExportAvailable,
+  projectName,
   fileManager,
   projectId,
 }: AssetCardPanelProps) {
@@ -406,14 +326,11 @@ export function AssetCardPanel({
   if (cards.length === 0) {
     return (
       <div className={styles.panel}>
-        <ExportHeader cards={cards} wordExportAvailable={wordExportAvailable} />
-        <div className={styles.toolbarRow}>
-          <SelfCheckToggle />
-        </div>
-        <DesignCompletenessBar fileManager={fileManager} projectId={projectId} />
+        <ExportHeader cards={cards} wordExportAvailable={wordExportAvailable} projectName={projectName} />
         <div className={styles.body}>
           <div className={styles.empty}>暂无资产卡片</div>
         </div>
+        <DesignProgressBar fileManager={fileManager} projectId={projectId} placement="asset" />
       </div>
     )
   }
@@ -427,11 +344,7 @@ export function AssetCardPanel({
   if (!isWriting) {
     return (
       <div className={styles.panel}>
-        <ExportHeader cards={cards} wordExportAvailable={wordExportAvailable} />
-        <div className={styles.toolbarRow}>
-          <SelfCheckToggle />
-        </div>
-        <DesignCompletenessBar fileManager={fileManager} projectId={projectId} />
+        <ExportHeader cards={cards} wordExportAvailable={wordExportAvailable} projectName={projectName} />
         <div className={styles.body}>
           {sections.map(({ group, cards: sectionCards }) =>
             COLLAPSIBLE_GROUPS.has(group) ? (
@@ -459,6 +372,7 @@ export function AssetCardPanel({
             ),
           )}
         </div>
+        <DesignProgressBar fileManager={fileManager} projectId={projectId} placement="asset" />
       </div>
     )
   }
@@ -471,10 +385,7 @@ export function AssetCardPanel({
 
   return (
     <div className={styles.panel}>
-      <ExportHeader cards={cards} wordExportAvailable={wordExportAvailable} />
-      <div className={styles.toolbarRow}>
-        <SelfCheckToggle />
-      </div>
+      <ExportHeader cards={cards} wordExportAvailable={wordExportAvailable} projectName={projectName} />
       <div className={styles.body}>
         {/* 大纲设计 - 父级折叠 */}
         <div className={styles.section}>
@@ -558,6 +469,7 @@ export function AssetCardPanel({
           ),
         )}
       </div>
+      <DesignProgressBar fileManager={fileManager} projectId={projectId} placement="asset" />
     </div>
   )
 }
