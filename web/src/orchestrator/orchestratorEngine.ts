@@ -871,6 +871,9 @@ export class OrchestratorEngine {
       '读取 Skill 后，只能调用 read_file 读取该 Skill 的 reads 声明范围内的资产。',
       '读取 Skill 后，只能调用 read_reference 读取该 Skill 声明的 references。',
       '最终输出必须遵循已读取 Skill 的 outputTags 与写入边界。',
+      '如果已读取 Skill 的 outputTags 包含 START/END 两个标签，你的最终回复必须只包含一个完整 TAG 块：第一行是 START 标签，最后一行是 END 标签。',
+      '不要在最终 TAG 块外写解释、总结、Markdown 代码围栏或额外寒暄；需要写入资产的正文全部放在 TAG 块内部。',
+      '如果 outputTags 为空，才可以直接输出检查报告正文。',
       '',
       '<skill_index>',
       JSON.stringify(skillIndex, null, 2),
@@ -941,6 +944,9 @@ export class OrchestratorEngine {
               outputTags: skill.outputTags,
               references: skill.references ?? [],
               body: skill.body,
+              finalOutputContract: skill.outputTags.length >= 2
+                ? `最终回复必须以 ${skill.outputTags[0]} 开始，并以 ${skill.outputTags[1]} 结束；TAG 外不得有任何内容。`
+                : '最终回复直接输出报告正文；无需 TAG。',
             },
           })
         }
@@ -1091,6 +1097,13 @@ export class OrchestratorEngine {
     return skills.filter((skill) => allowed.includes(skill.skillId))
   }
 
+  private normalizeUntaggedFallbackContent(output: string): string {
+    let content = output.trim()
+    const fenced = /^```(?:markdown|md)?\s*\n([\s\S]*?)\n```\s*$/i.exec(content)
+    if (fenced) content = fenced[1].trim()
+    return content
+  }
+
   /**
    * v7.3：构筑/写作 subagent 产出校验与落盘。
    *
@@ -1122,8 +1135,41 @@ export class OrchestratorEngine {
 
     const specView: SkillSpec = { ...targetSkill, writes: [writePath] }
     const validation = validateOutput(finalText, specView)
+    const warnings: string[] = []
+    let extracted = validation.extracted[writePath]
 
     if (!validation.valid) {
+      if (validation.structuralError) {
+        return {
+          success: false,
+          error: validation.structuralError,
+          skillId: targetSkill.skillId,
+          skillName: targetSkill.name,
+        }
+      }
+
+      const canFallbackToWholeOutput =
+        validation.missingTags.length > 0 &&
+        specView.writes.length === 1 &&
+        Boolean(writePath)
+
+      if (canFallbackToWholeOutput) {
+        extracted = this.normalizeUntaggedFallbackContent(finalText)
+        if (targetSkill.structuralCheck) {
+          const structuralError = targetSkill.structuralCheck(extracted)
+          if (structuralError) {
+            return {
+              success: false,
+              error: structuralError,
+              skillId: targetSkill.skillId,
+              skillName: targetSkill.name,
+            }
+          }
+        }
+        warnings.push(
+          `产出缺少 TAG（${validation.missingTags.join(', ')}），已按单文件目标 ${writePath} 兜底写入。`,
+        )
+      } else {
       const missing = validation.missingTags.join(', ')
       return {
         success: false,
@@ -1131,9 +1177,9 @@ export class OrchestratorEngine {
         skillId: targetSkill.skillId,
         skillName: targetSkill.name,
       }
+      }
     }
 
-    let extracted = validation.extracted[writePath]
     if (!extracted) {
       return {
         success: false,
@@ -1186,6 +1232,7 @@ export class OrchestratorEngine {
       success: true,
       writes: [writePath],
       output: finalText,
+      warnings: warnings.length > 0 ? warnings : undefined,
       skillId: targetSkill.skillId,
       skillName: targetSkill.name,
     }
