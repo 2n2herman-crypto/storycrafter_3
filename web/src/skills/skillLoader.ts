@@ -1,5 +1,5 @@
-import type { SubagentSpec, SkillSpec } from '../types'
-import { WRITER_IDS } from '../types/product'
+import type { SkillIndexItem, SubagentSpec, SkillSpec } from '../types'
+import { WRITER_IDS, type ProductKind } from '../types/product'
 import type OpenAI from 'openai'
 import { fetchSkills } from '../api/skills'
 
@@ -393,6 +393,51 @@ export function getAvailableSubagents(): SubagentSpec[] {
 /** 获取指定 Subagent 名下的全部 Skill */
 export function getSkills(subagentId: string): SkillSpec[] {
   return SKILLS_BY_SUBAGENT.get(subagentId) ?? []
+}
+
+/** v7.9.5：获取当前 Subagent 的轻量 Skill 索引，不包含完整 body。 */
+export function getSkillIndex(subagentId: string): SkillIndexItem[] {
+  return getSkills(subagentId).map((skill) => ({
+    subagentId: skill.subagentId,
+    skillId: skill.skillId,
+    name: skill.name,
+    description: skill.description,
+    when: skill.when,
+    reads: skill.reads,
+    writes: skill.writes,
+    outputTags: skill.outputTags,
+    references: skill.references ?? [],
+  }))
+}
+
+/** v7.9.5：按 ID 读取完整 Skill，用于 read_skill 渐进式披露。 */
+export function getSkillById(subagentId: string, skillId: string): SkillSpec | undefined {
+  return getSkills(subagentId).find((skill) => skill.skillId === skillId)
+}
+
+/** v7.9.5：按产品方向过滤 prose_writer 的 Skill 索引，避免写作范式串台。 */
+export function filterSkillIndexForProduct(
+  subagentId: string,
+  items: SkillIndexItem[],
+  productKind: ProductKind | null,
+  instruction: string,
+): SkillIndexItem[] {
+  if (subagentId !== 'prose_writer') return items
+  if (!productKind) return []
+
+  const wantsVideoScript = /视频脚本|分镜|镜头|景别|运镜|拍摄脚本|视听|shot/i.test(instruction)
+  const primaryByProduct: Record<ProductKind, string> = {
+    novel: 'novel_prose_rules',
+    short_drama: 'short_drama_script_rules',
+    long_drama: 'long_drama_script_rules',
+    screenplay: 'film_script_rules',
+  }
+  const allowed = new Set([primaryByProduct[productKind]])
+  if (productKind !== 'novel' && wantsVideoScript) {
+    allowed.add('video_shot_script_rules')
+  }
+
+  return items.filter((item) => allowed.has(item.skillId))
 }
 
 // v6.6：sequence_builder 用 target_sequence；统一写作 agent 用 target_chapter（白名单由 WRITER_IDS 派生）

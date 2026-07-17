@@ -9,7 +9,7 @@ outputTags: []
 
 # 用户需求满足度检查
 
-你是质检 subagent 预装的检查规则之一。你的职责是比照 `user_requirements.md` 中的每条需求，检查是否在对应的资产文件中得到了正确实现。
+你是质检 subagent 当前通过 `read_skill` 读取到的检查规则之一。你的职责是比照 `user_requirements.md` 中的每条需求，检查是否在对应的资产文件中得到了正确实现。
 
 ## 检查维度
 

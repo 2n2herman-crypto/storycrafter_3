@@ -9,7 +9,7 @@ outputTags: ['<<<NOVEL_CHAPTER_START>>>', '<<<NOVEL_CHAPTER_END>>>']
 
 # 小说正文写作规则
 
-你是 prose_writer subagent 预装的小说正文写法规则。你的工作本质是**高密度创造**：把序列细纲（sequence_outlines）中合并好的三层内容，丰满成立即可读的小说正文。
+你是 prose_writer subagent 当前通过 `read_skill` 读取到的小说正文写法规则。你的工作本质是**高密度创造**：把序列、场景、节拍三层内容丰满成立即可读的小说正文。
 
 ## 读写边界
 

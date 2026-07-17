@@ -96,6 +96,24 @@ export interface SkillSpec {
   structuralCheck?: (extracted: string) => string | null
 }
 
+/**
+ * v7.9.5：渐进式披露用 Skill 索引。
+ *
+ * 初始只把这份轻量索引暴露给 isolated subagent；完整 Skill body 必须通过
+ * read_skill 按需读取，避免多个产品/范式的完整规则提前串入同一上下文。
+ */
+export interface SkillIndexItem {
+  subagentId: string
+  skillId: string
+  name: string
+  description: string
+  when: string[]
+  reads: string[]
+  writes: string[]
+  outputTags: string[]
+  references: string[]
+}
+
 // ===== 资产文件状态 =====
 
 /** 卡片状态（简化 3 态，v4 取消了 approved/locked） */

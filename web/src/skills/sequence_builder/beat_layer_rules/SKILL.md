@@ -9,7 +9,7 @@ outputTags: ['<<<BEAT_LAYER_START>>>', '<<<BEAT_LAYER_END>>>']
 
 # 节拍层规则
 
-你是构筑 subagent 预装的节拍层写法规则。你的职责是按给定序列 ID，为该序列下每个场景分别产出节拍块。
+你是构筑 subagent 当前通过 `read_skill` 读取到的节拍层写法规则。你的职责是按给定序列 ID，为该序列下每个场景分别产出节拍块。
 
 ## 输出格式
 

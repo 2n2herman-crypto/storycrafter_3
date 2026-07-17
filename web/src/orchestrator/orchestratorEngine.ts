@@ -2,7 +2,16 @@ import type OpenAI from 'openai'
 import type { SubagentSpec, SkillSpec, ToolResult, DispatchResult, SchedulerState, ExecutionEvent, ExecutionEventCallback, ConversationTurn, AssetFileInfo, TurnStopReason } from '../types'
 import type { ProductProfile, ProductKind } from '../types/product'
 import { PRODUCT_PROFILES, WRITER_IDS, renderProductProfileXml } from '../types/product'
-import { getSubagent, getAvailableSubagents, buildFunctionSpec, getSkills, REFERENCE_CONTENTS } from '../skills/skillLoader'
+import {
+  getSubagent,
+  getAvailableSubagents,
+  buildFunctionSpec,
+  getSkills,
+  getSkillById,
+  getSkillIndex,
+  filterSkillIndexForProduct,
+  REFERENCE_CONTENTS,
+} from '../skills/skillLoader'
 import { assembleContext, buildAgentPrompt, wrapFileAsXml } from './contextAssembler'
 import { validateOutput, extractMultiFileOutput } from './outputValidator'
 import type { LLMClient } from '../llm/client'
@@ -11,7 +20,7 @@ import { usePhaseStore } from '../store/phaseStore'
 import { useSelfCheckStore } from '../store/selfCheckStore'
 import orchestratorPromptRaw from '../llm/prompts/orchestrator_v5.md?raw'
 import { runAgentLoop, SUBAGENT_LOOP_MAX_ROUNDS } from './agentLoop'
-import { READ_FILE_TOOL, READ_REFERENCE_TOOL } from './readTools'
+import { READ_FILE_TOOL, READ_REFERENCE_TOOL, READ_SKILL_TOOL } from './readTools'
 import { auditStructure, type StructuralIssue } from '../skills/checker/structuralAudit'
 import { buildProjectStatusSnapshot, isProjectStatusQuery } from './projectStatus'
 import { buildTurnSummary, renderTurnSummary, type ExecutedToolResult } from './turnSummary'
@@ -711,42 +720,38 @@ export class OrchestratorEngine {
 
   // ===== v7.3 宽泛 subagent 独立上下文执行 =====
 
-  /**
-   * v7.3：执行宽泛 subagent 专属上下文中的 read_file / read_reference 工具调用。
-   *
-   * read_file 通过 FileManager 读取任意已知资产文件并用 wrapFileAsXml 格式化返回；
-   * read_reference 从 skillLoader 的 REFERENCE_CONTENTS 查表中按 subagentId/skillId/name 查找。
-   */
-  private async executeReadToolCall(
-    toolCall: { id: string; type: 'function'; function: { name: string; arguments: string } },
+  private resolveAllowedReadPatterns(
+    skill: SkillSpec,
+    target?: string,
+    extraPaths: string[] = [],
+  ): string[] {
+    const normalizedReads = skill.reads.map((path) => {
+      if (!target) return path
+      return path.replace(/<ID>/g, target).replace(/<target>/g, target)
+    })
+    return [...normalizedReads, ...extraPaths].filter(Boolean)
+  }
+
+  private isAllowedReadPath(path: string, patterns: string[]): boolean {
+    return patterns.some((pattern) => {
+      if (pattern === path) return true
+      if (pattern.endsWith('/*.md')) {
+        const prefix = pattern.slice(0, -'/*.md'.length)
+        return path.startsWith(`${prefix}/`) && path.endsWith('.md')
+      }
+      return false
+    })
+  }
+
+  private async buildExtraAllowedReadPaths(
     subagentId: string,
-    preloadedSkills: SkillSpec[],
-  ): Promise<string> {
-    const args = JSON.parse(toolCall.function.arguments)
-    if (toolCall.function.name === 'read_file') {
-      const content = await safeRead(this.fileManager, args.path)
-      return wrapFileAsXml(args.path, content)
-    }
-    if (toolCall.function.name === 'read_reference') {
-      // 按当前 subagent 预装 skill 的 references 列表查找
-      // 先在预装 skill 中找声明了该 reference 的那个 skill
-      for (const skill of preloadedSkills) {
-        if (skill.references?.includes(args.name)) {
-          const key = `${subagentId}/${skill.skillId}/${args.name}`
-          const content = REFERENCE_CONTENTS.get(key)
-          if (content) return content
-        }
-      }
-      // 备选：不限定 skillId，直接扫描当前 subagent 下所有 skill
-      const skills = getSkills(subagentId)
-      for (const skill of skills) {
-        const key = `${subagentId}/${skill.skillId}/${args.name}`
-        const content = REFERENCE_CONTENTS.get(key)
-        if (content) return content
-      }
-      return `未找到参考文件: ${args.name}`
-    }
-    throw new Error(`未知工具: ${toolCall.function.name}`)
+    target?: string,
+  ): Promise<string[]> {
+    if (subagentId !== 'prose_writer' || !target) return []
+    const episodeRange = await this.buildProjectEpisodeRangeMap()
+    return getSkills('prose_writer').map((skill) =>
+      this.resolveWriterOutputPath(target, skill, episodeRange),
+    )
   }
 
   /**
@@ -790,9 +795,9 @@ export class OrchestratorEngine {
   /**
    * v7.3：宽泛 subagent 独立隔离上下文执行。
    *
-   * 1. 按 subagent.skills 拼装预装 skill 正文到 system prompt
+   * 1. 只披露 Skill Index，完整 Skill 正文由 read_skill 按需读取
    * 2. 新建专属 messages 数组（与主 Orchestrator 隔离）
-   * 3. 走 runAgentLoop 多轮循环，工具集为 read_file / read_reference
+   * 3. 走 runAgentLoop 多轮循环，工具集为 read_skill / read_file / read_reference
    * 4. 循环结束后取 finalText，校验并落盘
    *
    * 质检 subagent 的"只读隔离"由工具集层面保证——它只能拿到 read_file/read_reference，
@@ -837,18 +842,41 @@ export class OrchestratorEngine {
       }
     }
 
-    const subagentSkills = getSkills(subagent.id)
-    let preloadedSkills = (subagent.skills ?? [])
-      .map(skillId => subagentSkills.find(s => s.skillId === skillId))
-      .filter((s): s is SkillSpec => s !== undefined)
-    if (subagent.id === 'prose_writer') {
-      preloadedSkills = this.filterWriterSkillsByProfile(preloadedSkills)
+    const rawSkillIndex = getSkillIndex(subagent.id)
+    const skillIndex = filterSkillIndexForProduct(
+      subagent.id,
+      rawSkillIndex,
+      this.profileLock?.kind ?? null,
+      instruction,
+    )
+    if (skillIndex.length === 0) {
+      return {
+        success: false,
+        error: `${subagent.name} 当前没有可用 Skill，请检查产品方向、阶段或用户意图`,
+        skillName: subagent.name,
+      }
     }
 
-    // 拼装 system prompt = subagent 角色前缀 + 全部预装 skill 正文
-    const preamble = subagent.preamble || ''
-    const skillBodies = preloadedSkills.map(s => s.body).join('\n\n---\n\n')
-    const systemPrompt = skillBodies ? `${preamble}\n\n${skillBodies}` : preamble
+    let selectedSkill: SkillSpec | null = null
+    const readFiles = new Set<string>()
+    const readReferences = new Set<string>()
+    const extraAllowedReadPaths = await this.buildExtraAllowedReadPaths(subagent.id, target)
+
+    const systemPrompt = [
+      subagent.preamble || '',
+      '',
+      '## 渐进式披露协议',
+      '你现在只能看到当前 Subagent 的 Skill Index。',
+      '执行任务前必须先调用 read_skill，读取最合适的完整 Skill 规范。',
+      '读取 Skill 后，只能调用 read_file 读取该 Skill 的 reads 声明范围内的资产。',
+      '读取 Skill 后，只能调用 read_reference 读取该 Skill 声明的 references。',
+      '最终输出必须遵循已读取 Skill 的 outputTags 与写入边界。',
+      '',
+      '<skill_index>',
+      JSON.stringify(skillIndex, null, 2),
+      '</skill_index>',
+      this.profileLock ? `\n<product_profile>\n${renderProductProfileXml(this.profileLock)}\n</product_profile>` : '',
+    ].filter(Boolean).join('\n')
 
     // v7.3：质检 subagent 的结构合法性维度先跑机械扫描，注入 <structural_scan_result>
     const structuralScan = subagent.id === 'quality_checker'
@@ -872,14 +900,92 @@ export class OrchestratorEngine {
     this.emit('subagent_loop_start', {
       toolId: subagent.id,
       toolName: subagent.name,
-      message: `${subagent.name} 进入独立上下文执行（预装 ${preloadedSkills.length} 份规则）`,
+      message: `${subagent.name} 进入独立上下文执行（披露 ${skillIndex.length} 条 Skill 索引）`,
     })
 
     const result = await runAgentLoop(this.llm, {
       systemPrompt,
       initialMessages,
-      tools: [READ_FILE_TOOL, READ_REFERENCE_TOOL],
-      executeToolCall: (tc) => this.executeReadToolCall(tc, subagent.id, preloadedSkills),
+      tools: [READ_SKILL_TOOL, READ_FILE_TOOL, READ_REFERENCE_TOOL],
+      executeToolCall: async (tc) => {
+        const args = JSON.parse(tc.function.arguments || '{}')
+        if (tc.function.name === 'read_skill') {
+          const skillId = String(args.skillId ?? '').trim()
+          if (!skillIndex.some((item) => item.skillId === skillId)) {
+            return JSON.stringify({
+              success: false,
+              error: `Skill ${skillId || '(empty)'} 不在当前可用索引中`,
+            })
+          }
+          const skill = getSkillById(subagent.id, skillId)
+          if (!skill) {
+            return JSON.stringify({ success: false, error: `未知 Skill: ${skillId}` })
+          }
+          selectedSkill = skill
+          this.emit('subagent_loop_step', {
+            toolId: subagent.id,
+            toolName: subagent.name,
+            skillId: skill.skillId,
+            skillName: skill.name,
+            message: `已选择规范：${skill.name}`,
+          })
+          return JSON.stringify({
+            success: true,
+            skill: {
+              skillId: skill.skillId,
+              name: skill.name,
+              description: skill.description,
+              when: skill.when,
+              reads: skill.reads,
+              writes: skill.writes,
+              outputTags: skill.outputTags,
+              references: skill.references ?? [],
+              body: skill.body,
+            },
+          })
+        }
+
+        if (tc.function.name === 'read_file') {
+          if (!selectedSkill) {
+            return JSON.stringify({ success: false, error: '请先调用 read_skill 选择执行规范' })
+          }
+          const path = String(args.path ?? '').trim()
+          const allowed = this.resolveAllowedReadPatterns(selectedSkill, target, extraAllowedReadPaths)
+          if (!this.isAllowedReadPath(path, allowed)) {
+            return JSON.stringify({
+              success: false,
+              error: `该文件不在当前 Skill reads 中: ${path}`,
+              allowed,
+            })
+          }
+          readFiles.add(path)
+          const content = await safeRead(this.fileManager, path)
+          return wrapFileAsXml(path, content)
+        }
+
+        if (tc.function.name === 'read_reference') {
+          if (!selectedSkill) {
+            return JSON.stringify({ success: false, error: '请先调用 read_skill 选择执行规范' })
+          }
+          const name = String(args.name ?? '').trim()
+          if (!selectedSkill.references?.includes(name)) {
+            return JSON.stringify({
+              success: false,
+              error: `该 reference 未被当前 Skill 声明: ${name}`,
+              allowed: selectedSkill.references ?? [],
+            })
+          }
+          const key = `${subagent.id}/${selectedSkill.skillId}/${name}`
+          const content = REFERENCE_CONTENTS.get(key)
+          if (!content) {
+            return JSON.stringify({ success: false, error: `未找到参考文件: ${name}` })
+          }
+          readReferences.add(name)
+          return content
+        }
+
+        throw new Error(`未知工具: ${tc.function.name}`)
+      },
       maxRounds: SUBAGENT_LOOP_MAX_ROUNDS,
       onRound: (round) => {
         this.emit('subagent_loop_step', {
@@ -903,17 +1009,27 @@ export class OrchestratorEngine {
       return { success: false, error: '达到内部循环轮次上限仍未产出结果', skillName: subagent.name }
     }
 
+    const finalSelectedSkill = selectedSkill as SkillSpec | null
+    if (!finalSelectedSkill) {
+      return {
+        success: false,
+        error: `${subagent.name} 未调用 read_skill 选择执行规范，无法继续写入`,
+        skillName: subagent.name,
+      }
+    }
+
     // 质检 subagent：产出直接作为报告文本，不经过 outputValidator（它不打 TAG、不落盘）
     if (subagent.id === 'quality_checker') {
       return {
         success: true,
         output: result.finalText,
-        skillName: subagent.name,
+        skillId: finalSelectedSkill.skillId,
+        skillName: finalSelectedSkill.name,
       }
     }
 
     // 构筑/写作 subagent：走 outputValidator 校验 + 落盘
-    const persisted = await this.validateAndPersist(subagent, instruction, result.finalText, target)
+    const persisted = await this.validateAndPersist(subagent, instruction, result.finalText, target, finalSelectedSkill)
     return {
       ...persisted,
       writes: [...prerequisiteWrites, ...(persisted.writes ?? [])],
@@ -921,10 +1037,10 @@ export class OrchestratorEngine {
   }
 
   /**
-   * v7.3：独立上下文完成后解析本次输出目标——优先按预装 skill 的 `when` 关键词命中，
+   * v7.3 兼容回退：独立上下文完成后解析本次输出目标——优先按候选 skill 的 `when` 关键词命中，
    * 再回退到 outputTags 是否已出现在 finalText 里做兜底判断
    * （LLM 产出的 TAG 通常与它实际选用的规则一致，即使 instruction 没给出明确关键词）；
-   * 仍无法判定则回退到预装列表第一项，保证行为始终可预测。
+   * 仍无法判定则回退到候选列表第一项，保证行为始终可预测。
    */
   private resolveTargetSkill(
     subagent: SubagentSpec,
@@ -978,7 +1094,8 @@ export class OrchestratorEngine {
   /**
    * v7.3：构筑/写作 subagent 产出校验与落盘。
    *
-   * 根据 resolveTargetSkill 判定的目标层，选中对应预装 skill 的 outputTags 做提取校验，
+   * 根据 read_skill 实际选择的 Skill 做 outputTags 提取校验；
+   * 若走兼容回退，则由 resolveTargetSkill 判定目标层。
    * 然后写入对应路径。
    *
    * 当前采用单层模式——一次调用只处理一层；多层需求由 Orchestrator 拆成多次调用。
@@ -988,8 +1105,9 @@ export class OrchestratorEngine {
     instruction: string,
     finalText: string,
     target?: string,
+    selectedSkill?: SkillSpec,
   ): Promise<ToolResult> {
-    const targetSkill = this.resolveTargetSkill(subagent, instruction, finalText)
+    const targetSkill = selectedSkill ?? this.resolveTargetSkill(subagent, instruction, finalText)
 
     if (!targetSkill) {
       return { success: false, error: `未找到 ${subagent.id} 的可用 Skill`, skillName: subagent.name }

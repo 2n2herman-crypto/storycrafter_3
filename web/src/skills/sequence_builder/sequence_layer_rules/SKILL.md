@@ -9,7 +9,7 @@ outputTags: ['<<<SEQUENCE_LAYER_START>>>', '<<<SEQUENCE_LAYER_END>>>']
 
 # 序列层规则
 
-你是构筑 subagent 预装的序列层写法规则。你的职责是按给定序列 ID 产出该序列层的完整内容。
+你是构筑 subagent 当前通过 `read_skill` 读取到的序列层写法规则。你的职责是按给定序列 ID 产出该序列层的完整内容。
 
 ## 输出格式
 

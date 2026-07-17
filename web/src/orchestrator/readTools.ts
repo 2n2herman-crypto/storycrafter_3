@@ -6,7 +6,7 @@
  * - read_reference：读取当前 Skill 自己 references/ 目录下的一个参考文件
  *
  * 与 agentLoop.ts 配合：schema 供 runAgentLoop 的 tools 参数使用，
- * 具体执行逻辑由 executeReadToolCall 绑定（在 orchestratorEngine.ts 里实现）。
+ * 具体执行逻辑由 orchestratorEngine.ts 的 isolated subagent 工具回调绑定。
  */
 
 import type OpenAI from 'openai'
@@ -28,6 +28,25 @@ export const READ_FILE_TOOL: ChatCompletionTool = {
         },
       },
       required: ['path'],
+    },
+  },
+}
+
+export const READ_SKILL_TOOL: ChatCompletionTool = {
+  type: 'function',
+  function: {
+    name: 'read_skill',
+    description:
+      '读取当前 Subagent 下某个 Skill 的完整执行规范。必须先从 skill_index 中选择 skillId。',
+    parameters: {
+      type: 'object',
+      properties: {
+        skillId: {
+          type: 'string',
+          description: '要读取的 Skill ID，如 short_drama_script_rules',
+        },
+      },
+      required: ['skillId'],
     },
   },
 }

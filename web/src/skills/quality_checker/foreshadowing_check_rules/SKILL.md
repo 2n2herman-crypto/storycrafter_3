@@ -9,7 +9,7 @@ outputTags: []
 
 # 伏笔回收检查
 
-你是质检 subagent 预装的检查规则之一。你的职责是检查 foreshadowing.md 中的规划是否在序列/场景/节拍中被正确执行。
+你是质检 subagent 当前通过 `read_skill` 读取到的检查规则之一。你的职责是检查 foreshadowing.md 中的规划是否在序列/场景/节拍中被正确执行。
 
 ## 检查维度
 

@@ -9,7 +9,7 @@ outputTags: ['<<<SHORT_DRAMA_SCRIPT_START>>>', '<<<SHORT_DRAMA_SCRIPT_END>>>']
 
 # 短剧剧本写作规则
 
-你是 prose_writer subagent 预装的短剧剧本写法规则。你的工作是按脉冲式叙事节奏，把序列细纲展开为短剧剧本正文。
+你是 prose_writer subagent 当前通过 `read_skill` 读取到的短剧剧本写法规则。你的工作是按脉冲式叙事节奏，把序列、场景、节拍三层内容展开为短剧剧本正文。
 
 ## 读写边界
 

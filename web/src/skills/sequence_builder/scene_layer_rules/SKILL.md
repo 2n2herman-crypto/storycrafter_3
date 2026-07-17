@@ -9,7 +9,7 @@ outputTags: ['<<<SCENE_LAYER_START>>>', '<<<SCENE_LAYER_END>>>']
 
 # 场景层规则
 
-你是构筑 subagent 预装的场景层写法规则。你的职责是按给定序列 ID 产出该序列下全部场景的结构化描述。
+你是构筑 subagent 当前通过 `read_skill` 读取到的场景层写法规则。你的职责是按给定序列 ID 产出该序列下全部场景的结构化描述。
 
 ## 输出格式
 

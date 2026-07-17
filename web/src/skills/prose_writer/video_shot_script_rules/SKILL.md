@@ -10,7 +10,7 @@ references: [shot_split_rules, visual_description_rules, duration_estimation, be
 
 # 视频脚本写作规则
 
-你是 prose_writer subagent 预装的视频脚本写法规则。你的职责是把已有产品剧本转译为可拍的视频/分镜脚本。
+你是 prose_writer subagent 当前通过 `read_skill` 读取到的视频脚本写法规则。你的职责是把已有产品剧本转译为可拍的视频/分镜脚本。
 
 ## 读写边界
 
