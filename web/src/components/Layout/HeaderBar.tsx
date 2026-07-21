@@ -19,7 +19,7 @@ interface HeaderBarProps {
  * 产品选择器 → 下放到 ModeBar；设计完成校准与写作模式入口 → 资产面板顶部。
  */
 export function HeaderBar({
-  title = 'StoryCrafter',
+  title = 'Charta',
   onOpenSettings,
   projects,
   currentProject,
@@ -44,7 +44,7 @@ export function HeaderBar({
       <div className={styles.brand}>
         <span className={styles.brandDot} />
         <span className={styles.logo}>{title}</span>
-        <span className={styles.brandSub}>STORY STUDIO</span>
+        <span className={styles.brandSub}>NARRATIVE ATELIER</span>
       </div>
 
       {/* v7.1 M4：多项目选择器（降级模式隐藏） */}

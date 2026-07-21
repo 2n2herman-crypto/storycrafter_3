@@ -49,7 +49,7 @@ export async function buildAssetExportZip(
   } = {},
 ): Promise<Blob> {
   const normalizedItems = items.filter((item) => item.content.trim())
-  const rootName = sanitizeExportName(options.rootName || 'StoryCrafter_资产导出')
+  const rootName = sanitizeExportName(options.rootName || 'Charta_资产导出')
   const extension = format === 'word' ? 'docx' : 'md'
   const usedPaths = new Set<string>()
   const files: ZipEntryInput[] = []
@@ -96,7 +96,7 @@ export async function buildAssetExportZip(
   return createZipBlob(files)
 }
 
-export function buildExportArchiveName(format: ExportFormat, rootName = 'StoryCrafter_资产导出'): string {
+export function buildExportArchiveName(format: ExportFormat, rootName = 'Charta_资产导出'): string {
   const safeRoot = sanitizeExportName(rootName)
   const suffix = format === 'word' ? 'word' : 'md'
   return `${safeRoot}_${suffix}.zip`
@@ -179,7 +179,7 @@ function makeUniquePath(path: string, used: Set<string>): string {
 
 function buildManifestMarkdown(items: ExportSourceItem[], format: ExportFormat): string {
   const lines = [
-    '# StoryCrafter 资产导出清单',
+    '# Charta 资产导出清单',
     '',
     `- 导出格式：${format === 'word' ? 'Word (.docx)' : 'Markdown (.md)'}`,
     `- 资产数量：${items.length}`,

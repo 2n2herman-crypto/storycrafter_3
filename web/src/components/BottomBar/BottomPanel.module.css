@@ -29,7 +29,7 @@
 .title::after {
   content: ' DIALOGUE';
   margin-left: 7px;
-  font-family: 'Cormorant Garamond', serif;
+  font-family: var(--font-latin), var(--font-display);
   color: var(--color-brown);
   font-size: 10px;
   letter-spacing: 0.12em;
