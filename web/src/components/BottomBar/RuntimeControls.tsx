@@ -41,6 +41,7 @@ export function DesignProgressBar({ fileManager, projectId, placement = 'dialogu
   const [mergeResult, setMergeResult] = useState<MergeResult | null>(null)
 
   const canEnter = denominator > 0 && numerator === denominator && !merging
+  const progressPercent = denominator > 0 ? Math.min(100, Math.round((numerator / denominator) * 100)) : 0
 
   const handleEnterWritingMode = async () => {
     if (!fileManager) return
@@ -85,13 +86,30 @@ export function DesignProgressBar({ fileManager, projectId, placement = 'dialogu
   if (denominator === 0) return null
 
   return (
-    <div className={`${styles.designProgress}${placement === 'asset' ? ` ${styles.designProgressAsset}` : ''}`}>
+    <div
+      className={`${styles.designProgress}${placement === 'asset' ? ` ${styles.designProgressAsset}` : ''}`}
+      data-complete={canEnter ? 'true' : 'false'}
+    >
       <div className={styles.designProgressMeta}>
-        <span>设计进度</span>
-        <span>{numerator}/{denominator}</span>
+        <span className={styles.designProgressTitle}>设计进度</span>
+        <span className={styles.designProgressValue}>
+          <strong>{numerator}</strong>
+          <span>/</span>
+          {denominator}
+        </span>
       </div>
       <div className={styles.designProgressRow}>
-        <progress className={styles.designProgressBar} value={numerator} max={denominator} />
+        <div
+          className={styles.designProgressTrack}
+          role="progressbar"
+          aria-label="设计进度"
+          aria-valuemin={0}
+          aria-valuemax={denominator}
+          aria-valuenow={numerator}
+          data-empty={numerator === 0 ? 'true' : 'false'}
+        >
+          <span className={styles.designProgressFill} style={{ width: `${progressPercent}%` }} />
+        </div>
         <button
           className={styles.designProgressBtn}
           disabled={!canEnter}
