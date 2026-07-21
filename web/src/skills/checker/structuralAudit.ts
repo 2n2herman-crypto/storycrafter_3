@@ -324,10 +324,11 @@ function extractSceneIdsFromMd(md: string): string[] {
 /** 从节拍文件 Markdown 中提取所有节拍块引用的场景 ID（去重集合） */
 function extractBeatSceneIdsFromMd(md: string): Set<string> {
   const ids = new Set<string>()
-  const re = /B-(SC-[A-Z0-9]+-\d+-\d{1,2})-\d+/g
+  // 节拍 ID 格式：B-{S1-1-01}-1（无 SC- 前缀），需补上 SC- 前缀与场景层比较
+  const re = /B-(S\d+-\d+-\d{1,2})-\d+/g
   let m: RegExpExecArray | null
   while ((m = re.exec(md)) !== null) {
-    ids.add(m[1])
+    ids.add(`SC-${m[1]}`)
   }
   return ids
 }

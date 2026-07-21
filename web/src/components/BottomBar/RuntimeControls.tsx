@@ -40,7 +40,7 @@ export function DesignProgressBar({ fileManager, projectId, placement = 'dialogu
   const [merging, setMerging] = useState(false)
   const [mergeResult, setMergeResult] = useState<MergeResult | null>(null)
 
-  const canEnter = denominator > 0 && numerator === denominator && !merging
+  const canEnter = denominator > 0 && numerator >= denominator && !merging
   const progressPercent = denominator > 0 ? Math.min(100, Math.round((numerator / denominator) * 100)) : 0
 
   const handleEnterWritingMode = async () => {
