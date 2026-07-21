@@ -31,16 +31,15 @@
 }
 
 .logo {
-  font-family: var(--font-display);
-  font-size: 17px;
-  font-weight: 700;
+  font-family: var(--font-latin), var(--font-display);
+  font-size: 18px;
+  font-weight: 600;
   color: #fbf5e9;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
 }
 
-/* v8 副标：Cormorant 衬线小字 */
 .brandSub {
-  font-family: 'Cormorant Garamond', serif;
+  font-family: var(--font-latin), var(--font-display);
   font-size: 11px;
   letter-spacing: 0.18em;
   color: #cdbb94;

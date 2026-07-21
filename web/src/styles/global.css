@@ -52,6 +52,7 @@
 
   /* 字体（v8 全文衬线） */
   --font-mono: 'Cascadia Code', 'JetBrains Mono', 'Fira Code', monospace;
+  --font-latin: 'Cormorant Garamond', 'Georgia', serif;
   --font-display: 'Noto Serif SC', 'Songti SC', 'Source Han Serif SC', serif;
   --font-sans: 'Noto Serif SC', 'Songti SC', 'Source Han Serif SC', serif;
 }
