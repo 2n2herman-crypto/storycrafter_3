@@ -59,6 +59,20 @@ export function useExecutionSteps(executionLog: ExecutionEvent[]): ExecutionStep
           }
           break
         }
+        case 'subagent_loop_step': {
+          if (event.toolId !== 'asset_shell') break
+          seq += 1
+          steps.push({
+            key: `${event.toolId}_${seq}`,
+            toolId: event.toolId,
+            title: '调用：检索资产',
+            reason: getSubagentReason(event.toolId, event.toolName ?? event.toolId),
+            glyph: getSubagentGlyph(event.toolId, event.toolName ?? event.toolId),
+            subtitle: event.message,
+            status: 'done',
+          })
+          break
+        }
         case 'tool_error': {
           const running = findLastRunning()
           if (running) {

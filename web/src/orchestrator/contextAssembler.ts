@@ -10,23 +10,6 @@
 import type { ConversationTurn } from '../types'
 
 /**
- * v7.3：单文件 XML 包装辅助函数。
- *
- * 从 assembleContext 体内抽出的单文件包装逻辑，供 read_file tool call 的返回值格式化复用。
- * 标签名从路径推导：去掉 .md 后缀，将 / 替换为 _（因为 XML 标签名不能含斜杠）。
- *
- * 例如：sequences/S1-1.md → <sequences_S1-1>...</sequences_S1-1>
- *       worldbuilding.md    → <worldbuilding>...</worldbuilding>
- */
-export function wrapFileAsXml(path: string, content: string): string {
-  const tagName = path.replace(/\.md$/, '').replace(/\//g, '_')
-  if (content && content.length > 0) {
-    return `<${tagName}>\n${content}\n</${tagName}>`
-  }
-  return `<${tagName}></${tagName}>`
-}
-
-/**
  * 组装 Skill 上下文
  *
  * @param reads - 需读取的文件路径列表（来自 SkillSpec.reads）
@@ -89,5 +72,4 @@ export function buildAgentPrompt(
     .filter(Boolean)
     .join('\n\n')
 }
-
 

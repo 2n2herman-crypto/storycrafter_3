@@ -39,11 +39,11 @@ function defaultConfigFromEnv(): LLMConfig | null {
     profiles: [
       {
         id: 'deepseek-default',
-        name: 'DeepSeek v4 flash',
+        name: 'DeepSeek',
         kind: 'openai-compatible',
         baseURL: 'https://api.deepseek.com',
         apiKey: envKey,
-        model: 'deepseek-v4-flash',
+        model: 'deepseek-chat',
       },
     ],
   }

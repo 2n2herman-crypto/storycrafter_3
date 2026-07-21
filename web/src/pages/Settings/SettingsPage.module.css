@@ -80,26 +80,20 @@
 .profileHead {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
 }
 
-.nameInput {
-  flex: 1;
-  padding: 6px 10px;
-  border: 1px solid var(--color-bg-secondary);
-  border-radius: var(--radius-control);
-  background: var(--color-bg-tertiary);
+.profileHead strong {
   font-size: 14px;
   font-weight: 600;
+  color: var(--color-text-primary);
 }
 
-.activeLabel {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.profileHead p {
+  margin: 3px 0 0;
   font-size: 13px;
-  cursor: pointer;
-  white-space: nowrap;
+  color: var(--color-text-secondary, #888);
 }
 
 .delBtn {
@@ -128,13 +122,21 @@
   opacity: 0.7;
 }
 
-.field input {
+.field input,
+.field select {
   padding: 6px 10px;
   border: 1px solid var(--color-bg-secondary);
   border-radius: var(--radius-control);
   background: var(--color-bg-tertiary);
   font-size: 13px;
+}
+
+.field input {
   font-family: var(--font-mono);
+}
+
+.field select {
+  cursor: pointer;
 }
 
 .profileFoot {
@@ -190,6 +192,22 @@
 }
 
 .saveBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.secondaryBtn {
+  align-self: flex-start;
+  padding: 7px 18px;
+  border: 1px solid var(--color-bg-secondary);
+  border-radius: var(--radius-control);
+  background: var(--color-bg-elevated);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.secondaryBtn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

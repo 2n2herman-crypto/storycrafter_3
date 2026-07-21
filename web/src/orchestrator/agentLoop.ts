@@ -177,6 +177,5 @@ export async function runAgentLoop(
   }
 }
 
-/** 宽泛 subagent 内部循环轮次上限（v7.3 经验值，开发方案第2.4节） */
-export const SUBAGENT_LOOP_MAX_ROUNDS = 8
-
+/** 宽泛 subagent 内部循环轮次上限（v8.1 asset_shell 多次轻量检索需要更高预算） */
+export const SUBAGENT_LOOP_MAX_ROUNDS = 16

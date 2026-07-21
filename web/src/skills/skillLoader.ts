@@ -244,7 +244,7 @@ function buildRegistries(): {
 
 const builtIn = buildRegistries()
 
-// ===== v7.3 References 内容查表（供 executeReadToolCall 查找） =====
+// ===== v7.3 References 内容查表（供独立 subagent 的 read_reference 查找） =====
 
 function buildReferenceContents(
   refModules: Record<string, { default: string }>,

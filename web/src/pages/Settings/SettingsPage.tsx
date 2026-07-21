@@ -10,14 +10,54 @@ interface Props {
   onClose: () => void
 }
 
+type ProviderPreset = 'deepseek' | 'openai' | 'custom'
+
+const PROVIDERS: Record<ProviderPreset, { label: string; baseURL: string; model: string }> = {
+  deepseek: {
+    label: 'DeepSeek',
+    baseURL: 'https://api.deepseek.com',
+    model: 'deepseek-chat',
+  },
+  openai: {
+    label: 'OpenAI',
+    baseURL: 'https://api.openai.com',
+    model: 'gpt-4o-mini',
+  },
+  custom: {
+    label: '其他品牌',
+    baseURL: '',
+    model: '',
+  },
+}
+
 /** 本地编辑草稿：apiKey 空字符串=保持原值，非空=覆盖 */
 interface ProfileDraft {
   id: string
   name: string
+  provider: ProviderPreset
   baseURL: string
   apiKey: string
   apiKeyMasked: string
   model: string
+}
+
+function detectProvider(baseURL: string): ProviderPreset {
+  if (baseURL.includes('api.deepseek.com')) return 'deepseek'
+  if (baseURL.includes('api.openai.com')) return 'openai'
+  return 'custom'
+}
+
+function createDraft(provider: ProviderPreset = 'deepseek'): ProfileDraft {
+  const preset = PROVIDERS[provider]
+  return {
+    id: '',
+    name: preset.label,
+    provider,
+    baseURL: preset.baseURL,
+    apiKey: '',
+    apiKeyMasked: '',
+    model: preset.model,
+  }
 }
 
 export function SettingsPage({ onClose }: Props) {
@@ -78,14 +118,17 @@ export function SettingsPage({ onClose }: Props) {
       .then((c) => {
         setActiveId(c.activeProfileId)
         setDrafts(
-          c.profiles.map((p) => ({
-            id: p.id,
-            name: p.name,
-            baseURL: p.baseURL,
-            apiKey: '',
-            apiKeyMasked: p.apiKey,
-            model: p.model,
-          })),
+          c.profiles.length > 0
+            ? c.profiles.map((p) => ({
+                id: p.id,
+                name: p.name,
+                provider: detectProvider(p.baseURL),
+                baseURL: p.baseURL,
+                apiKey: '',
+                apiKeyMasked: p.apiKey,
+                model: p.model,
+              }))
+            : [createDraft()],
         )
       })
       .catch((e) => setError(e instanceof ApiRequestError ? e.message : String(e)))
@@ -93,28 +136,28 @@ export function SettingsPage({ onClose }: Props) {
   }, [])
 
   function newProfile() {
-    setDrafts((ds) => [
-      ...ds,
-      {
-        id: '', // 后端生成
-        name: '新 profile',
-        baseURL: 'https://api.deepseek.com',
-        apiKey: '',
-        apiKeyMasked: '',
-        model: 'deepseek-v4-flash',
-      },
-    ])
+    setDrafts((ds) => [...ds, createDraft()])
   }
 
   function updateDraft(idx: number, patch: Partial<ProfileDraft>) {
     setDrafts((ds) => ds.map((d, i) => (i === idx ? { ...d, ...patch } : d)))
   }
 
+  function updateProvider(idx: number, provider: ProviderPreset) {
+    const preset = PROVIDERS[provider]
+    updateDraft(idx, {
+      provider,
+      name: preset.label,
+      baseURL: preset.baseURL,
+      model: preset.model,
+    })
+  }
+
   function removeDraft(idx: number) {
     setDrafts((ds) => ds.filter((_, i) => i !== idx))
   }
 
-  async function save() {
+  async function save(options?: { activateIdx?: number; testAfterSave?: boolean }) {
     setSaving(true)
     setError(null)
     try {
@@ -125,19 +168,41 @@ export function SettingsPage({ onClose }: Props) {
         model: d.model,
         apiKey: d.apiKey === '' ? undefined : d.apiKey, // 空保持原值
       }))
-      const updated = await putConfig({ activeProfileId: activeId, profiles })
+      let updated = await putConfig({
+        activeProfileId: options?.activateIdx !== undefined
+          ? drafts[options.activateIdx]?.id || undefined
+          : activeId,
+        profiles,
+      })
+      const activated = options?.activateIdx !== undefined
+        ? updated.profiles[options.activateIdx]
+        : undefined
+      if (activated && updated.activeProfileId !== activated.id) {
+        updated = await putConfig({
+          activeProfileId: activated.id,
+          profiles: updated.profiles.map((p) => ({
+            id: p.id,
+            name: p.name,
+            baseURL: p.baseURL,
+            model: p.model,
+          })),
+        })
+      }
+      const nextDrafts = updated.profiles.map((p) => ({
+        id: p.id,
+        name: p.name,
+        provider: detectProvider(p.baseURL),
+        baseURL: p.baseURL,
+        apiKey: '',
+        apiKeyMasked: p.apiKey,
+        model: p.model,
+      }))
       setActiveId(updated.activeProfileId)
-      setDrafts(
-        updated.profiles.map((p) => ({
-          id: p.id,
-          name: p.name,
-          baseURL: p.baseURL,
-          apiKey: '',
-          apiKeyMasked: p.apiKey,
-          model: p.model,
-        })),
-      )
+      setDrafts(nextDrafts)
       setTestResult({})
+      if (options?.testAfterSave && options.activateIdx !== undefined) {
+        await testSavedProfile(options.activateIdx, updated.profiles[options.activateIdx]?.id)
+      }
     } catch (e) {
       setError(e instanceof ApiRequestError ? e.message : String(e))
     } finally {
@@ -145,15 +210,14 @@ export function SettingsPage({ onClose }: Props) {
     }
   }
 
-  async function test(idx: number) {
-    const d = drafts[idx]
-    if (!d.id) {
-      setError('请先保存新 profile 再测试连接')
+  async function testSavedProfile(idx: number, profileId: string | undefined) {
+    if (!profileId) {
+      setError('保存失败，未生成可测试的配置')
       return
     }
     setTestingIdx(idx)
     try {
-      const r = await testProfile(d.id)
+      const r = await testProfile(profileId)
       setTestResult((m) => ({
         ...m,
         [idx]: { ok: r.ok, msg: r.ok ? `${r.model} · ${r.latencyMs}ms` : r.error ?? '失败' },
@@ -166,6 +230,19 @@ export function SettingsPage({ onClose }: Props) {
     } finally {
       setTestingIdx(null)
     }
+  }
+
+  async function saveAndTest(idx: number) {
+    const d = drafts[idx]
+    if (!d.baseURL.trim() || !d.model.trim()) {
+      setError('请填写接口地址和模型名称')
+      return
+    }
+    if (!d.apiKey.trim() && !d.apiKeyMasked) {
+      setError('请填写 API Key')
+      return
+    }
+    await save({ activateIdx: idx, testAfterSave: true })
   }
 
   if (loading) return <div className={styles.wrap}>加载配置...</div>
@@ -181,55 +258,43 @@ export function SettingsPage({ onClose }: Props) {
 
       <section className={styles.section}>
         <div className={styles.sectionHead}>
-          <h3>LLM Provider</h3>
+          <h3>模型服务</h3>
           <button onClick={newProfile} className={styles.addBtn}>
-            + 新建
+            + 添加一组
           </button>
         </div>
         <p className={styles.hint}>
-          API Key 保存在后端 config.json（权限 0600），浏览器不暴露。激活的 profile 用于所有 LLM 调用。
+          选择常用服务后填入 API Key 即可；其他品牌只要兼容 OpenAI 接口，填入 URL 和模型名称也能使用。
         </p>
 
-        {drafts.length === 0 && <p className={styles.empty}>未配置任何 provider，点击「新建」添加。</p>}
+        {drafts.length === 0 && <p className={styles.empty}>还没有模型配置，点击「添加一组」开始。</p>}
 
         {drafts.map((d, idx) => (
           <div key={d.id || `new-${idx}`} className={styles.profileCard}>
             <div className={styles.profileHead}>
-              <input
-                className={styles.nameInput}
-                value={d.name}
-                onChange={(e) => updateDraft(idx, { name: e.target.value })}
-                placeholder="profile 名称"
-              />
-              <label className={styles.activeLabel}>
-                <input
-                  type="radio"
-                  checked={activeId === d.id}
-                  onChange={() => d.id && setActiveId(d.id)}
-                  disabled={!d.id}
-                />
-                激活
-              </label>
+              <div>
+                <strong>{d.id && activeId === d.id ? '当前使用' : '备用配置'}</strong>
+                <p>{d.provider === 'custom' ? 'OpenAI 兼容接口' : PROVIDERS[d.provider].label}</p>
+              </div>
               <button onClick={() => removeDraft(idx)} className={styles.delBtn}>
                 删除
               </button>
             </div>
             <label className={styles.field}>
-              <span>baseURL</span>
-              <input
-                value={d.baseURL}
-                onChange={(e) => updateDraft(idx, { baseURL: e.target.value })}
-              />
+              <span>模型品牌</span>
+              <select
+                value={d.provider}
+                onChange={(e) => updateProvider(idx, e.target.value as ProviderPreset)}
+              >
+                {Object.entries(PROVIDERS).map(([value, preset]) => (
+                  <option key={value} value={value}>
+                    {preset.label}
+                  </option>
+                ))}
+              </select>
             </label>
             <label className={styles.field}>
-              <span>model</span>
-              <input value={d.model} onChange={(e) => updateDraft(idx, { model: e.target.value })} />
-            </label>
-            <label className={styles.field}>
-              <span>
-                apiKey
-                {d.apiKeyMasked && <em>（当前：{d.apiKeyMasked}，留空保持）</em>}
-              </span>
+              <span>API Key {d.apiKeyMasked && <em>（当前：{d.apiKeyMasked}，留空保持）</em>}</span>
               <input
                 type="password"
                 value={d.apiKey}
@@ -237,17 +302,31 @@ export function SettingsPage({ onClose }: Props) {
                 placeholder={d.apiKeyMasked || '输入 API Key'}
               />
             </label>
+            {d.provider === 'custom' && (
+              <label className={styles.field}>
+                <span>接口地址</span>
+                <input
+                  value={d.baseURL}
+                  onChange={(e) => updateDraft(idx, { baseURL: e.target.value, name: '其他品牌' })}
+                  placeholder="https://api.example.com"
+                />
+              </label>
+            )}
+            <label className={styles.field}>
+              <span>模型名称</span>
+              <input value={d.model} onChange={(e) => updateDraft(idx, { model: e.target.value })} />
+            </label>
             <div className={styles.profileFoot}>
               <button
-                onClick={() => test(idx)}
-                disabled={testingIdx === idx}
-                className={styles.testBtn}
+                onClick={() => saveAndTest(idx)}
+                disabled={saving || testingIdx === idx}
+                className={styles.saveBtn}
               >
-                {testingIdx === idx ? '测试中...' : '测试连接'}
+                {saving || testingIdx === idx ? '连接中...' : '保存并测试连接'}
               </button>
               {testResult[idx] && (
                 <span className={testResult[idx].ok ? styles.ok : styles.fail}>
-                  {testResult[idx].ok ? '✓ ' : '✗ '}
+                  {testResult[idx].ok ? '已连接：' : '连接失败：'}
                   {testResult[idx].msg}
                 </span>
               )}
@@ -255,8 +334,8 @@ export function SettingsPage({ onClose }: Props) {
           </div>
         ))}
 
-        <button onClick={save} disabled={saving} className={styles.saveBtn}>
-          {saving ? '保存中...' : '保存配置'}
+        <button onClick={() => save()} disabled={saving} className={styles.secondaryBtn}>
+          {saving ? '保存中...' : '仅保存配置'}
         </button>
         {error && <p className={styles.error}>{error}</p>}
       </section>

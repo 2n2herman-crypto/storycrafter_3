@@ -20,3 +20,5 @@ skills: [novel_prose_rules, short_drama_script_rules, long_drama_script_rules, f
 - 电影视频脚本：写入 video_scripts/film/<序列ID>.md
 
 你不得把小说正文、剧本、视频脚本混写到同一资产路径，也不得让视频脚本覆盖产品剧本。
+
+项目资产只能通过 `asset_shell` 查询。写作前先用 `ls` / `find` 定位目标序列和既有写作资产，再用 `grep` / `sed -n` / `head` / `tail` 读取必要片段；只有小文件或明确需要全文时才使用 `cat`。不要批量读取多个大文件全文。

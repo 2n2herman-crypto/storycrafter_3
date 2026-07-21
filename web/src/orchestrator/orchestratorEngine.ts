@@ -3,7 +3,7 @@ import type { SubagentSpec, SkillSpec, ToolResult, DispatchResult, SchedulerStat
 import type { ProductProfile, ProductKind } from '../types/product'
 import { PRODUCT_PROFILES, WRITER_IDS, renderProductProfileXml } from '../types/product'
 import { getSubagent, getAvailableSubagents, buildFunctionSpec, getSkills, REFERENCE_CONTENTS } from '../skills/skillLoader'
-import { assembleContext, buildAgentPrompt, wrapFileAsXml } from './contextAssembler'
+import { assembleContext, buildAgentPrompt } from './contextAssembler'
 import { validateOutput, extractMultiFileOutput } from './outputValidator'
 import type { LLMClient } from '../llm/client'
 import type { FileManager } from './fileManager'
@@ -11,10 +11,11 @@ import { usePhaseStore } from '../store/phaseStore'
 import { useSelfCheckStore } from '../store/selfCheckStore'
 import orchestratorPromptRaw from '../llm/prompts/orchestrator_v5.md?raw'
 import { runAgentLoop, SUBAGENT_LOOP_MAX_ROUNDS } from './agentLoop'
-import { READ_FILE_TOOL, READ_REFERENCE_TOOL } from './readTools'
+import { ASSET_SHELL_TOOL, READ_REFERENCE_TOOL } from './readTools'
 import { auditStructure, type StructuralIssue } from '../skills/checker/structuralAudit'
 import { buildProjectStatusSnapshot, isProjectStatusQuery } from './projectStatus'
 import { buildTurnSummary, renderTurnSummary, type ExecutedToolResult } from './turnSummary'
+import { runAssetShell } from './assetShell'
 
 type ChatCompletionMessageParam = OpenAI.Chat.Completions.ChatCompletionMessageParam
 
@@ -712,20 +713,25 @@ export class OrchestratorEngine {
   // ===== v7.3 宽泛 subagent 独立上下文执行 =====
 
   /**
-   * v7.3：执行宽泛 subagent 专属上下文中的 read_file / read_reference 工具调用。
+   * 执行宽泛 subagent 专属上下文中的 asset_shell / read_reference 工具调用。
    *
-   * read_file 通过 FileManager 读取任意已知资产文件并用 wrapFileAsXml 格式化返回；
+   * asset_shell 通过受控命令解释器查询项目资产；
    * read_reference 从 skillLoader 的 REFERENCE_CONTENTS 查表中按 subagentId/skillId/name 查找。
    */
-  private async executeReadToolCall(
+  private async executeIsolatedToolCall(
     toolCall: { id: string; type: 'function'; function: { name: string; arguments: string } },
     subagentId: string,
     preloadedSkills: SkillSpec[],
   ): Promise<string> {
     const args = JSON.parse(toolCall.function.arguments)
-    if (toolCall.function.name === 'read_file') {
-      const content = await safeRead(this.fileManager, args.path)
-      return wrapFileAsXml(args.path, content)
+    if (toolCall.function.name === 'asset_shell') {
+      const command = String(args.command ?? '').trim()
+      this.emit('subagent_loop_step', {
+        toolId: 'asset_shell',
+        toolName: '检索资产',
+        message: command,
+      })
+      return runAssetShell(this.fileManager, command)
     }
     if (toolCall.function.name === 'read_reference') {
       // 按当前 subagent 预装 skill 的 references 列表查找
@@ -792,10 +798,10 @@ export class OrchestratorEngine {
    *
    * 1. 按 subagent.skills 拼装预装 skill 正文到 system prompt
    * 2. 新建专属 messages 数组（与主 Orchestrator 隔离）
-   * 3. 走 runAgentLoop 多轮循环，工具集为 read_file / read_reference
+   * 3. 走 runAgentLoop 多轮循环，工具集为 asset_shell / read_reference
    * 4. 循环结束后取 finalText，校验并落盘
    *
-   * 质检 subagent 的"只读隔离"由工具集层面保证——它只能拿到 read_file/read_reference，
+   * 质检 subagent 的"只读隔离"由工具集层面保证——它只能拿到 asset_shell/read_reference，
    * 不提供任何写入工具，引擎侧统一落盘。
    */
   private async runSubagentWithIsolatedContext(
@@ -878,8 +884,8 @@ export class OrchestratorEngine {
     const result = await runAgentLoop(this.llm, {
       systemPrompt,
       initialMessages,
-      tools: [READ_FILE_TOOL, READ_REFERENCE_TOOL],
-      executeToolCall: (tc) => this.executeReadToolCall(tc, subagent.id, preloadedSkills),
+      tools: [ASSET_SHELL_TOOL, READ_REFERENCE_TOOL],
+      executeToolCall: (tc) => this.executeIsolatedToolCall(tc, subagent.id, preloadedSkills),
       maxRounds: SUBAGENT_LOOP_MAX_ROUNDS,
       onRound: (round) => {
         this.emit('subagent_loop_step', {

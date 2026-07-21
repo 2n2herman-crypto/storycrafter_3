@@ -45,8 +45,14 @@ configRouter.put('/', (req, res) => {
     }
   })
 
+  const requestedActiveId = incoming.activeProfileId ?? current.activeProfileId
+  const activeProfileId =
+    profiles.some((p) => p.id === requestedActiveId)
+      ? requestedActiveId
+      : (profiles[0]?.id ?? '')
+
   const next: LLMConfig = {
-    activeProfileId: incoming.activeProfileId ?? current.activeProfileId,
+    activeProfileId,
     profiles,
   }
 

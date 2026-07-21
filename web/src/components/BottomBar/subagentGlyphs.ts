@@ -14,6 +14,7 @@ export const SUBAGENT_REASON: Record<string, string> = {
   sequence_list: '拆解序列清单与戏剧节奏',
   foreshadowing_tracker: '规划伏笔的铺设与回收',
   subplot_manager: '管理支线的开辟与合并',
+  asset_shell: '检索项目资产并读取必要片段',
 }
 
 /** subagentId → 单字图形图标（非 emoji，保持紧凑的单字标识风格） */
@@ -24,6 +25,7 @@ export const SUBAGENT_GLYPH: Record<string, string> = {
   sequence_list: '序',
   foreshadowing_tracker: '伏',
   subplot_manager: '支',
+  asset_shell: '查',
 }
 
 /** 查表 + 兜底：未登记的 subagentId 回退为 toolName 本身 */

@@ -11,7 +11,7 @@ export class ApiRequestError extends Error {
   kind: string
   detail?: string
   constructor(err: ApiError) {
-    super(err.message)
+    super(err.detail ? `${err.message}：${err.detail}` : err.message)
     this.name = 'ApiRequestError'
     this.kind = err.kind
     this.detail = err.detail

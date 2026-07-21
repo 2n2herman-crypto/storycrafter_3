@@ -256,7 +256,7 @@ export type ExecutionEventType =
   | 'tool_complete'
   | 'tool_error'
   | 'subagent_loop_start'   // v7.3：宽泛 subagent 专属循环开始
-  | 'subagent_loop_step'    // v7.3：专属循环内一轮 read_file/read_reference（可选，用于展示进度）
+  | 'subagent_loop_step'    // 专属循环内一轮 asset_shell/read_reference（可选，用于展示进度）
   | 'subagent_loop_complete' // v7.3：专属循环结束，取得最终文本
   | 'engine_finalizing'
   | 'engine_complete'
